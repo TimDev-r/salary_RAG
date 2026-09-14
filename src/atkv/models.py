@@ -133,10 +133,20 @@ class Citation(BaseModel):
     source_url: str
     page: int | None = None
 
-    def render(self) -> str:
-        """'[IT-KV 2026, Gehaltstabelle, § 15]'"""
+    def render(self, short: bool = False) -> str:
+        """'[IT-KV 2026, Gehaltstabelle, § 15]', or '[IT-KV 2026, § 15]' if short.
+
+        The short form exists for text a language model has to reproduce. Some
+        section titles run to sixty characters ("Tätigkeitsfamilien,
+        Vorrückungsstufen und Mindestgrundgehälter"), and every token of that
+        is a token generated at 8-10 tok/s -- about a fifth of the whole
+        answer, spent on a heading the reader can look up from the paragraph
+        number alone. Nothing is lost: the full citation, title included, is
+        still returned in the structured `citations` field of the response.
+        """
         head = f"{self.short_title} {self.year}" if self.year else self.short_title
-        parts = [head, *(p for p in (self.section_title, self.section_ref) if p)]
+        title = None if short else self.section_title
+        parts = [head, *(p for p in (title, self.section_ref) if p)]
         return "[" + ", ".join(parts) + "]"
 
 
@@ -166,7 +176,15 @@ class QueryRequest(BaseModel):
     valid_year: int = Field(ge=2025, le=2030, description="Scopes retrieval to documents in force in this year")
     lang: Lang = Field(default="de", description="Language of the ANSWER. Sources may be in the other language.")
     tenant_id: str = "public"
-    k: int = Field(default=8, ge=1, le=50, description="Chunks to retrieve before generation")
+    k: int = Field(
+        default=5, ge=1, le=50,
+        description=(
+            "Chunks passed to generation. Measured trade-off: k=5 gives R@5 0.88 and "
+            "~6.5s, k=3 gives R@3 0.84 and ~4.8s. Fewer chunks is faster because "
+            "prompt evaluation dominates latency, but the answer is then sometimes "
+            "not in the context at all. Defaults to recall."
+        ),
+    )
     rerank: bool = Field(default=False, description="Run the cross-encoder. Measured with and without.")
 
     def as_of(self) -> date:

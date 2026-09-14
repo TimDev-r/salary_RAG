@@ -65,13 +65,14 @@ SYSTEM = {
         "3. Steht die Antwort nicht in den Auszügen, antworte mit genau diesem Satz "
         "und sonst nichts: Dazu findet sich in den vorliegenden Dokumenten keine Antwort.\n"
         "4. Beträge sind brutto pro Monat, sofern der Auszug nichts anderes sagt.\n"
-        "5. Höchstens zwei Sätze. Rate niemals.\n\n"
+        "5. Kurz, höchstens zwei Sätze, ohne die Frage zu wiederholen. Die Fundstelle "
+        "gehört IMMER dazu. Rate niemals.\n\n"
         "BEISPIEL (erfundenes Dokument, nur zur Veranschaulichung des Formats)\n"
-        "QUELLE: [MUSTER-KV, Musterbestimmung, § 99]\n"
+        "QUELLE: [MUSTER-KV, § 99]\n"
         "Die Musterfrist beträgt sieben Werktage.\n"
         "FRAGE: Wie lang ist die Musterfrist?\n"
         "ANTWORT: Die Musterfrist beträgt sieben Werktage "
-        "[MUSTER-KV, Musterbestimmung, § 99]."
+        "[MUSTER-KV, § 99]."
     ),
     "en": (
         "You are a reference system for the Austrian IT collective agreement "
@@ -83,13 +84,14 @@ SYSTEM = {
         "3. If the excerpts do not contain the answer, reply with exactly this "
         "sentence and nothing else: The available documents do not answer this question.\n"
         "4. Amounts are gross per month unless the excerpt says otherwise.\n"
-        "5. At most two sentences. Never guess.\n\n"
+        "5. Brief, at most two sentences, without restating the question. The citation "
+        "is ALWAYS required. Never guess.\n\n"
         "EXAMPLE (fictional document, shown only to illustrate the format)\n"
-        "SOURCE: [SAMPLE-CA, sample provision, § 99]\n"
+        "SOURCE: [SAMPLE-CA, § 99]\n"
         "The sample period is seven working days.\n"
         "QUESTION: How long is the sample period?\n"
         "ANSWER: The sample period is seven working days "
-        "[SAMPLE-CA, sample provision, § 99]."
+        "[SAMPLE-CA, § 99]."
     ),
 }
 
@@ -98,7 +100,12 @@ class OllamaProvider(GenerationProvider):
     name = "ollama"
 
     def __init__(self, model: str = DEFAULT_MODEL, host: str = DEFAULT_HOST,
-                 timeout: float = 120.0) -> None:
+                 timeout: float = 120.0, keep_alive: str = "30m") -> None:
+        # Ollama evicts an idle model after 5 minutes by default, and reloading
+        # this one costs 4.5s -- measured. On a service answering a handful of
+        # questions an hour, that eviction lands on a real user almost every
+        # time. Holding it resident trades ~2 GB of RAM for that latency.
+        self.keep_alive = keep_alive
         self.model = model
         self.host = host.rstrip("/")
         self._http = httpx.Client(timeout=timeout)
@@ -132,7 +139,8 @@ class OllamaProvider(GenerationProvider):
                     {"role": "user", "content": user},
                 ],
                 "stream": False,
-                "options": {"temperature": 0, "num_predict": 300},
+                "keep_alive": self.keep_alive,
+                "options": {"temperature": 0, "num_predict": 160},
             },
         )
         r.raise_for_status()

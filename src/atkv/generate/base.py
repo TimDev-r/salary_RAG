@@ -74,7 +74,7 @@ def build_context(chunks: list[Chunk], max_chars: int = 6000, lang: str = "de") 
     label = "QUELLE" if lang == "de" else "SOURCE"
     out, total = [], 0
     for c in chunks:
-        block = f"{label}: {c.to_citation().render()}\n{c.text}"
+        block = f"{label}: {c.to_citation().render(short=True)}\n{c.text}"
         if total + len(block) > max_chars:
             break
         out.append(block)

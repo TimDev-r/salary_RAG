@@ -52,55 +52,12 @@ from __future__ import annotations
 import re
 
 from atkv.ingest.parse import Section, Table, parse_amount
+from atkv.ingest.text import MAX_PROSE_CHARS, split_text
 from atkv.ingest.wko import CorpusDoc
 from atkv.models import Chunk
 
-# e5 models truncate at 512 tokens. Roughly 4 chars/token for German, so ~2000
-# chars is the ceiling; 1400 leaves room for the heading prefix we prepend to
-# every chunk without silently losing the end of the text.
-MAX_PROSE_CHARS = 1400
-
-# Block boundaries inside a section: "(1)", "(2)" and roman subsection markers
-# "I.", "II.". Splitting here rather than at a character count keeps a
-# provision whole, so a chunk is never half a legal rule.
-BLOCK_START = re.compile(r"^\s*(?:\(\d+[a-z]?\)|[IVX]+\.)\s")
 
 
-def _blocks(text: str) -> list[str]:
-    out: list[str] = []
-    cur: list[str] = []
-    for line in text.splitlines():
-        if BLOCK_START.match(line) and cur:
-            out.append("\n".join(cur))
-            cur = [line]
-        else:
-            cur.append(line)
-    if cur:
-        out.append("\n".join(cur))
-    return [b for b in (b.strip() for b in out) if b]
-
-
-def _pack(blocks: list[str], limit: int) -> list[str]:
-    """Greedily group whole blocks up to `limit`; split oversized ones on sentences."""
-    parts: list[str] = []
-    cur = ""
-    for b in blocks:
-        while len(b) > limit:
-            cut = b.rfind(". ", 0, limit)
-            cut = cut + 1 if cut > limit // 2 else limit
-            head, b = b[:cut].strip(), b[cut:].strip()
-            if cur:
-                parts.append(cur); cur = ""
-            parts.append(head)
-        if not cur:
-            cur = b
-        elif len(cur) + 1 + len(b) <= limit:
-            cur += "\n" + b
-        else:
-            parts.append(cur); cur = b
-    if cur:
-        parts.append(cur)
-    return parts
 
 
 def _fmt(amount: int, lang: str) -> str:
@@ -168,7 +125,7 @@ def chunk_document(doc: CorpusDoc, sections: list[Section]) -> list[Chunk]:
     for sec in sections:
         header = f"{doc.short_title} {doc.valid_from.year}, {sec.ref} {sec.title}"
 
-        for part in _pack(_blocks(sec.text), MAX_PROSE_CHARS):
+        for part in split_text(sec.text):
             # Every chunk carries its § and year. Without this a retrieved
             # fragment reads as anonymous text and the generator has no way to
             # attribute it, even though the metadata is on the object.

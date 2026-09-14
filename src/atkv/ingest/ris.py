@@ -36,6 +36,7 @@ from pathlib import Path
 
 import httpx
 
+from atkv.ingest.text import split_text
 from atkv.models import Chunk
 
 BASE = "https://data.bka.gv.at/ris/api/v2.6"
@@ -290,25 +291,43 @@ class RisClient:
                 continue  # repealed paragraphs exist and are legitimately empty
 
             doc_id = f"{law.abbrev.lower()}-{law.gesetzesnummer}"
-            chunks.append(
-                Chunk(
-                    chunk_id=Chunk.make_id(doc_id, len(chunks)),
-                    doc_id=doc_id,
-                    valid_from=date.fromisoformat(kons["Inkrafttretensdatum"]),
-                    valid_to=None,
-                    source_type="law",
-                    short_title=kons.get("Abkuerzung") or law.abbrev,
-                    source_title=br.get("Titel") or br.get("Kurztitel") or law.abbrev,
-                    source_url=meta["Allgemein"]["DokumentUrl"],
-                    section_ref=section_ref,
-                    section_title=headings[-1] if headings else None,
-                    heading_path=headings,
-                    page=None,
-                    lang="de",
-                    content_kind="prose",
-                    text=text,
+            abbrev = kons.get("Abkuerzung") or law.abbrev
+            kurztitel = br.get("Kurztitel") or law.abbrev
+            section_title = headings[-1] if headings else None
+
+            # A topical header, exactly as the KV chunks get one.
+            #
+            # Without it, law chunks began with raw statute text while KV chunks
+            # began "IT-KV 2026, § 4 Arbeitszeit". A question about working time
+            # then matched the KV's literal heading far better than the actual
+            # Arbeitszeitgesetz, and law retrieval measured 0.33 while cross-
+            # lingual measured 0.00. The asymmetry was ours, not the model's.
+            header = f"{kurztitel} ({abbrev}), {section_ref}"
+            if section_title:
+                header += f" {section_title}"
+
+            # Split like everything else. 24% of law units exceeded the
+            # embedder's 512-token window and were silently truncated.
+            for part in split_text(text):
+                chunks.append(
+                    Chunk(
+                        chunk_id=Chunk.make_id(doc_id, len(chunks)),
+                        doc_id=doc_id,
+                        valid_from=date.fromisoformat(kons["Inkrafttretensdatum"]),
+                        valid_to=None,
+                        source_type="law",
+                        short_title=abbrev,
+                        source_title=br.get("Titel") or kurztitel,
+                        source_url=meta["Allgemein"]["DokumentUrl"],
+                        section_ref=section_ref,
+                        section_title=section_title,
+                        heading_path=headings,
+                        page=None,
+                        lang="de",
+                        content_kind="prose",
+                        text=f"{header}\n{part}",
+                    )
                 )
-            )
         return chunks
 
     def close(self) -> None:

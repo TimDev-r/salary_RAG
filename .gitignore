@@ -1,0 +1,24 @@
+# --- HARD RULE: no source documents in the repo, ever. -------------------
+# WKO PDFs are the social partners' copyrighted documents. They are fetched at
+# ingest time from manifests/sources.yaml. RIS data is open government data and
+# would be legally fine to commit, but we keep the whole data/ tree out anyway
+# so that "is this file safe to commit?" is never a judgement call.
+data/
+
+# --- HARD RULE: no secrets, ever. ---------------------------------------
+.env
+.env.*
+*.key
+*.pem
+secrets.yaml
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# --- macOS ---
+.DS_Store

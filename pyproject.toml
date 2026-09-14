@@ -9,6 +9,7 @@ requires-python = ">=3.12,<3.13"
 # `uv sync` small means we can verify the arm64 toolchain in seconds, not after
 # a 2.5 GB download.
 dependencies = [
+    "httpx>=0.28.1",
     "pydantic>=2.9",
 ]
 

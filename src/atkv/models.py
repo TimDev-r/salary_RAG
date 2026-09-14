@@ -106,10 +106,15 @@ class Chunk(BaseModel):
         return self.valid_to is None or day <= self.valid_to
 
     def to_citation(self) -> "Citation":
+        # The year is rendered only for collective agreements, where "IT-KV 2026"
+        # names a distinct document a reader can go and open. For consolidated
+        # law, valid_from is the paragraph's Inkrafttretensdatum -- correct for
+        # filtering, but rendering "[AZG 2022]" would claim a "2022 version of
+        # the AZG" that does not exist. Austrian practice is simply "§ 1 AZG".
         return Citation(
             chunk_id=self.chunk_id,
             short_title=self.short_title,
-            year=self.valid_from.year,
+            year=self.valid_from.year if self.source_type == "kv" else None,
             section_ref=self.section_ref,
             section_title=self.section_title,
             source_url=self.source_url,

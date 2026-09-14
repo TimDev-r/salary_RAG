@@ -1,0 +1,91 @@
+# Source manifest for the AT-KV assistant.
+#
+# The WKO documents are the social partners' copyrighted publications. They are
+# fetched at ingest time and cached under data/raw/ (gitignored). They are never
+# committed. This file -- URLs and metadata only -- is what lives in the repo.
+#
+# Every URL here was verified live, not assumed. See the `expect_on_page_1`
+# field: it is asserted after download, because a wrong-but-valid PDF is the
+# worst outcome this project can have. Retrieval would look perfect and the
+# answer would be wrong.
+
+corpus:
+  # Indexed. Four PDFs through one identical extraction pipeline.
+  #
+  # Both years must be parsed the SAME WAY. The headline experiment compares
+  # 2025 against 2026 retrieval; if one year came from clean HTML and the other
+  # from messy PDF, a measured difference could be the version filter working
+  # or just HTML parsing better than PDF, and we could not tell which.
+
+  - doc_id: it-kv-2026-de
+    url: https://www.wko.at/oe/kollektivvertrag/kv-informationstechnologie-2026.pdf
+    landing_page: https://www.wko.at/kollektivvertrag/kollektivvertrag-datenverarbeitung-informationstechnik-2026
+    short_title: IT-KV
+    source_title: Kollektivvertrag für Angestellte von Unternehmen im Bereich Dienstleistungen in der automatischen Datenverarbeitung und Informationstechnik
+    lang: de
+    # Geltungsdauer as stated by WKO on the landing page. Not inferred.
+    valid_from: 2026-01-01
+    valid_to: 2026-12-31
+    expect_on_page_1: "Kollektivvertrag 2026"
+
+  - doc_id: it-kv-2026-en
+    url: https://www.wko.at/oe/kollektivvertrag/it-collective-agreement-2026.pdf
+    landing_page: https://www.wko.at/kollektivvertrag/it-collective-agreement-2026
+    short_title: IT-KV
+    source_title: Collective Agreement for Employees of service providers in the field of automatic data processing and information technology
+    lang: en
+    valid_from: 2026-01-01
+    valid_to: 2026-12-31
+    expect_on_page_1: "Collective Agreement 2026"
+
+  - doc_id: it-kv-2025-de
+    # NOTE: this URL is NOT linked from WKO's own page. The 2025 landing page is
+    # marked "ARCHIVIERT" and renders the text inline as HTML instead. This path
+    # was derived by analogy with the 2026 URL and verified by download: 34
+    # pages, page 1 reads "Kollektivvertrag 2025".
+    #
+    # That makes it a fragile dependency, which is exactly why
+    # expect_on_page_1 is asserted. If WKO moves or replaces this file, ingest
+    # fails loudly rather than quietly indexing the wrong year.
+    url: https://www.wko.at/oe/kollektivvertrag/kv-informationstechnologie-2025.pdf
+    landing_page: https://www.wko.at/kollektivvertrag/kollektivvertrag-datenverarbeitung-informationstechnik-2025
+    short_title: IT-KV
+    source_title: Kollektivvertrag für Angestellte von Unternehmen im Bereich Dienstleistungen in der automatischen Datenverarbeitung und Informationstechnik
+    lang: de
+    valid_from: 2025-01-01
+    valid_to: 2025-12-31
+    expect_on_page_1: "Kollektivvertrag 2025"
+
+  - doc_id: it-kv-2025-en
+    url: https://www.wko.at/oe/kollektivvertrag/it-collective-agreement-2025.pdf
+    landing_page: https://www.wko.at/kollektivvertrag/it-collective-agreement-2025
+    short_title: IT-KV
+    source_title: Collective Agreement for Employees of service providers in the field of automatic data processing and information technology
+    lang: en
+    valid_from: 2025-01-01
+    valid_to: 2025-12-31
+    expect_on_page_1: "Collective Agreement 2025"
+
+eval_sources:
+  # NEVER INDEXED. These are the answer key.
+  #
+  # This is a separate top-level key rather than an `index: false` flag on a
+  # corpus entry, deliberately. A boolean is one typo away from leaking the
+  # answer key into the retrieval index, which would inflate every metric while
+  # looking like success. Different key, different code path, no shared loop.
+  #
+  # Both are HTML, not PDF -- easier and more reliable to parse than the KV
+  # itself, and since they never enter the index, the retrieval corpus stays
+  # 100% PDF.
+
+  - doc_id: faq-2026
+    url: https://www.wko.at/kollektivvertrag/fragen-antworten-kollektivvertrag-informationstechnologie-2026
+    title: Fragen und Antworten zum Kollektivvertrag Informationstechnologie 2026
+    lang: de
+    about_year: 2026
+
+  - doc_id: berechnungsbeispiele-2026
+    url: https://www.wko.at/kollektivvertrag/berechnungsbeispiele-kv-informationstechnologie-2026
+    title: Berechnungsbeispiele zum Kollektivvertrag Informationstechnologie 2026
+    lang: de
+    about_year: 2026

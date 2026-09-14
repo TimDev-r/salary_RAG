@@ -38,6 +38,20 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+# IMPORT ORDER IS LOad-BEARING. torch MUST be imported before faiss.
+#
+# Both link their own copy of OpenMP. On macOS, importing faiss first and then
+# torch (via transformers, sentence-transformers, anything) segfaults the
+# process -- silently, with no traceback and no Python-level error, just exit
+# code 139. Importing torch first initialises the runtime that both then share.
+#
+# Verified by isolation: `import faiss` then the translator crashes;
+# the reverse order works; OMP_NUM_THREADS=1 also works but costs threading;
+# KMP_DUPLICATE_LIB_OK alone does NOT fix it.
+#
+# faiss is imported nowhere else, so ordering it here fixes it everywhere.
+import torch  # noqa: F401  (imported for side effect -- see above)
+
 import faiss
 import numpy as np
 
@@ -70,22 +84,25 @@ class DenseIndex:
 
     # -- the filter --------------------------------------------------------
 
-    def _allowed_ids(self, as_of: date, tenant_id: str, lang: str | None) -> np.ndarray:
+    def _allowed_ids(self, as_of: date, tenant_id: str, lang: str | None,
+                     source_type: str | None) -> np.ndarray:
         return np.array(
             [i for i, c in enumerate(self.chunks)
              if c.in_force_on(as_of)
              and c.tenant_id == tenant_id
-             and (lang is None or c.lang == lang)],
+             and (lang is None or c.lang == lang)
+             and (source_type is None or c.source_type == source_type)],
             dtype=np.int64,
         )
 
     def search(self, query_vec: np.ndarray, k: int = 8, *, as_of: date | None = None,
-               tenant_id: str = "public", lang: str | None = None) -> list[DenseHit]:
+               tenant_id: str = "public", lang: str | None = None,
+               source_type: str | None = None) -> list[DenseHit]:
         q = np.ascontiguousarray(query_vec.reshape(1, -1).astype(np.float32))
 
         params = None
         if as_of is not None:
-            ids = self._allowed_ids(as_of, tenant_id, lang)
+            ids = self._allowed_ids(as_of, tenant_id, lang, source_type)
             if ids.size == 0:
                 return []
             # IDSelectorBatch restricts what the scan may consider. The excluded

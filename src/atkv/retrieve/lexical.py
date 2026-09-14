@@ -172,7 +172,8 @@ class LexicalIndex:
         self.bm25 = BM25Okapi([self.analyzer.analyze(c.text, c.lang) for c in chunks])
 
     def search(self, query: str, k: int = 8, *, as_of: date | None = None,
-               tenant_id: str = "public", lang: str | None = None) -> list[LexicalHit]:
+               tenant_id: str = "public", lang: str | None = None,
+               source_type: str | None = None) -> list[LexicalHit]:
         # A query is analysed under BOTH stemmers and the results unioned. We
         # cannot know the language of the chunk we are looking for -- the whole
         # point of the cross-lingual cases is that an English question must
@@ -189,6 +190,7 @@ class LexicalIndex:
             mask = np.array([
                 c.in_force_on(as_of) and c.tenant_id == tenant_id
                 and (lang is None or c.lang == lang)
+                and (source_type is None or c.source_type == source_type)
                 for c in self.chunks
             ])
             scores = np.where(mask, scores, -np.inf)

@@ -29,17 +29,22 @@ can return the cell chunk and the table chunk as two "different" results,
 burning context on a duplicate. Fusion must dedupe on (doc_id, section_ref).
 That is work owed in step 7, not something this file solves.
 
-WHAT THE VERBALISATION DOES NOT SAY
------------------------------------
-It does not say "brutto". The word appears ZERO times in the 2026 agreement.
-The brief's example answer format ("€ X.XXX,XX brutto/Monat") asserts
-something the source document never states, and inventing a claim is the same
-sin as inventing a number.
+WHY THE VERBALISATION SAYS "brutto pro Monat"
+---------------------------------------------
+The salary table itself prints bare numbers: no currency, no period, no
+gross/net marker. Both qualifiers are nonetheless grounded in the document:
 
-"pro Monat" IS stated, though indirectly: § 13 defines the annual entitlement
-as "das Vierzehnfache des ... Mindestgrundgehaltes" -- fourteen monthly
-payments -- so the figure is monthly. EUR is the currency the same document
-uses elsewhere ("€ 7,55" for night work).
+  monthly  § 13 sets the annual entitlement at "das Vierzehnfache des ...
+           Mindestgrundgehaltes" -- fourteen monthly payments.
+  gross    the agreement's unit for a monthly salary is a
+           "Bruttomonatsgehalt" (§ 14, the aliquot rule divides it by 30),
+           and "netto" appears nowhere in the document at all.
+  EUR      the same agreement prices night work at "€ 7,55".
+
+Stating "brutto" is not decoration. A reader who takes 4.476 for take-home
+pay has been materially misled, and silence is no defence when silence is
+predictably misread. The qualifier is asserted because it is sourced -- had
+it not been, the right fix would have been to find the source, not to guess.
 """
 
 from __future__ import annotations
@@ -119,7 +124,7 @@ def _is_real_table(t: Table) -> bool:
 
 def _verbalise_cell(doc: CorpusDoc, sec: Section, t: Table, row_label: str,
                     col_label: str, amount: int) -> str:
-    unit = "EUR pro Monat" if doc.lang == "de" else "EUR per month"
+    unit = "EUR brutto pro Monat" if doc.lang == "de" else "EUR gross per month"
     head = f"{doc.short_title} {doc.valid_from.year}, {sec.ref} {sec.title}"
     caption = (t.caption or "").strip()
     return "\n".join(x for x in [head, caption, f"{col_label} / {row_label}: {_fmt(amount, doc.lang)} {unit}"] if x)

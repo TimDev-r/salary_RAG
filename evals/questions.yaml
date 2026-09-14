@@ -1,0 +1,441 @@
+# Evaluation set for the AT-KV assistant.
+#
+# FROZEN BEFORE ANY RETRIEVAL TUNING. That ordering is the whole point. Written
+# afterwards, these questions would unconsciously be ones the retriever already
+# answers, and both headline measurements would become decoration.
+#
+# PROVENANCE
+# ----------
+# Every figure was read out of a source document and is recorded below with
+# where it came from. Nothing is remembered, inferred or rounded. Where a value
+# appears in more than one independent place (the DE PDF, the EN PDF, and WKO's
+# Berechnungsbeispiele / FAQ pages), that is noted -- those are genuine
+# cross-checks, since the documents were produced and parsed independently.
+#
+# The FAQ and Berechnungsbeispiele are the ANSWER KEY and are never indexed.
+# Every question here is answerable from the indexed corpus alone (the four KV
+# PDFs plus AZG and UrlG); facts that live only in the FAQ are excluded, because
+# an unanswerable question measures nothing but our own confusion.
+#
+# expect        what the ANSWER must contain. May differ from the source: AZG
+#               writes "vierzig Stunden", and a correct English answer says
+#               "40 hours". Converting the one to the other is part of the task.
+# source_quote  literal text that must appear in a chunk matching expect_source.
+#               This is what makes the set self-verifying -- a question whose
+#               supporting text is not actually in the corpus is a broken
+#               question, and broken questions quietly punish the retriever for
+#               our mistake.
+#
+# GROUND TRUTH REFERENCES (doc_id, section_ref), NEVER chunk_id.
+# chunk_id is derived from position and changes whenever chunking changes --
+# which it will. section_ref is a property of the source document.
+#
+# DESIGN
+# ------
+# Not every question is duplicated across languages. Blanket duplication doubles
+# cost without doubling information and varies language even where language is
+# not what is being measured. Instead there are controlled pairs on the three
+# axes that matter:
+#
+#   version_filter  same question, valid_year 2025 vs 2026     (8 cases)
+#   language_pair   same fact asked in German and English      (6 cases)
+#   cross_lingual   English question, German-ONLY source        (3 cases)
+#                   -- AZG/UrlG exist only in German, so an English question
+#                      there has no choice but to retrieve German text. An
+#                      English question about the KV would just hit the English
+#                      KV and test nothing.
+#   coverage        breadth across KV prose and law             (8 cases)
+#
+# Totals: 25 answerable + 5 refusal.
+
+questions:
+
+  # ---------------------------------------------------------------- A. version
+  # Same question, two years. The documents are ~95% identical and the tables
+  # sit on the same page of both, so nothing but the metadata filter can
+  # separate them.
+
+  - id: ver_st1_erfahrung_2026
+    question: "Wie hoch ist das Mindestgrundgehalt für ST1 in der Erfahrungsstufe?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [version_filter, table]
+    expect: {amount: 4476}
+    expect_source: {doc_id: it-kv-2026-de, short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "4.476"
+    source_note: >-
+      it-kv-2026-de.pdf p26, § 15 III. Gehaltstabelle, row Erfahrungsstufe /
+      column ST1. Independently confirmed by it-kv-2026-en.pdf p26 (4,476) and
+      by WKO's Berechnungsbeispiele 2026, Beispiel 2 ("4.476,-").
+
+  - id: ver_st1_erfahrung_2025
+    question: "Wie hoch ist das Mindestgrundgehalt für ST1 in der Erfahrungsstufe?"
+    lang: de
+    valid_year: 2025
+    type: answerable
+    tests: [version_filter, table]
+    expect: {amount: 4350}
+    expect_source: {doc_id: it-kv-2025-de, short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "4.350"
+    source_note: >-
+      it-kv-2025-de.pdf p26, § 15 III., row Erfahrungsstufe / column ST1.
+      Confirmed by it-kv-2025-en.pdf p26 (4,350).
+
+  - id: ver_at_regelstufe_2026
+    question: "Was beträgt das kollektivvertragliche Mindestgrundgehalt in der Tätigkeitsfamilie AT, Regelstufe?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [version_filter, table]
+    expect: {amount: 3155}
+    expect_source: {doc_id: it-kv-2026-de, short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "3.155"
+    source_note: >-
+      it-kv-2026-de.pdf p26, row Regelstufe / column AT. Confirmed twice over by
+      WKO's Berechnungsbeispiele 2026, Beispiel 5, which states the AT Regelstufe
+      increase as "von € 3.063,- auf € 3.155,-" -- fixing both years at once.
+
+  - id: ver_at_regelstufe_2025
+    question: "Was beträgt das kollektivvertragliche Mindestgrundgehalt in der Tätigkeitsfamilie AT, Regelstufe?"
+    lang: de
+    valid_year: 2025
+    type: answerable
+    tests: [version_filter, table]
+    expect: {amount: 3063}
+    expect_source: {doc_id: it-kv-2025-de, short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "3.063"
+    source_note: >-
+      it-kv-2025-de.pdf p26, row Regelstufe / column AT. Also stated in
+      Berechnungsbeispiele 2026, Beispiel 5 as the pre-increase figure.
+
+  - id: ver_lt_erfahrung_2026
+    question: "Wie viel verdient man mindestens in der Tätigkeitsfamilie LT, Erfahrungsstufe?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [version_filter, table]
+    expect: {amount: 6781}
+    expect_source: {doc_id: it-kv-2026-de, short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "6.781"
+    source_note: "it-kv-2026-de.pdf p26, row Erfahrungsstufe / column LT. Confirmed by Berechnungsbeispiele 2026, Beispiel 2."
+
+  - id: ver_lt_erfahrung_2025
+    question: "Wie viel verdient man mindestens in der Tätigkeitsfamilie LT, Erfahrungsstufe?"
+    lang: de
+    valid_year: 2025
+    type: answerable
+    tests: [version_filter, table]
+    expect: {amount: 6603}
+    expect_source: {doc_id: it-kv-2025-de, short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "6.603"
+    source_note: "it-kv-2025-de.pdf p26, row Erfahrungsstufe / column LT."
+
+  - id: ver_lehrling_jahr1_2026
+    question: "Wie hoch ist das monatliche Lehrlingseinkommen im ersten Lehrjahr?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [version_filter, prose]
+    expect: {amount: 960}
+    expect_source: {doc_id: it-kv-2026-de, short_title: IT-KV, section_ref: "§ 16"}
+    source_quote: "1. Lehrjahr: 960"
+    source_note: >-
+      it-kv-2026-de.pdf § 16 (1): "im 1. Lehrjahr: 960 ,-". Note the source
+      prints whole euros as "960 ,-". Confirmed by it-kv-2026-en.pdf ("960.00").
+
+  - id: ver_lehrling_jahr1_2025
+    question: "Wie hoch ist das monatliche Lehrlingseinkommen im ersten Lehrjahr?"
+    lang: de
+    valid_year: 2025
+    type: answerable
+    tests: [version_filter, prose]
+    expect: {amount: 929}
+    expect_source: {doc_id: it-kv-2025-de, short_title: IT-KV, section_ref: "§ 16"}
+    source_quote: "1. Lehrjahr: 929"
+    source_note: 'it-kv-2025-de.pdf § 16 (1): "im 1. Lehrjahr: 929 ,-".'
+
+  # -------------------------------------------------------- B. language pairs
+  # Same fact, same year, asked in German and English. A paired comparison, so
+  # any difference is attributable to the question language and not to the fact.
+
+  - id: lang_arbeitszeit_de
+    question: "Wie viele Stunden beträgt die wöchentliche Normalarbeitszeit nach dem IT-KV?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [language_pair, prose]
+    expect: {any_of: ["38,5"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 4"}
+    source_quote: "38,5 Stunden wöchentlich"
+    source_note: 'it-kv-2026-de.pdf § 4 I. (1): "Die normale Arbeitszeit beträgt 38,5 Stunden wöchentlich".'
+
+  - id: lang_arbeitszeit_en
+    question: "How many hours per week are normal working hours under the IT collective agreement?"
+    lang: en
+    valid_year: 2026
+    type: answerable
+    tests: [language_pair, prose]
+    expect: {any_of: ["38.5", "38,5"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 4"}
+    source_quote: "38.5 hours per week"
+    source_note: >-
+      it-kv-2026-en.pdf § 4 I. (1): "Normal working hours are 38.5 hours per
+      week". Note the English document writes 38.5 where the German writes 38,5.
+
+  - id: lang_st1_regelstufe_de
+    question: "Wie hoch ist das Mindestgrundgehalt für ST1 in der Regelstufe?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [language_pair, table]
+    expect: {amount: 3954}
+    expect_source: {short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "3.954"
+    source_note: >-
+      it-kv-2026-de.pdf p26, row Regelstufe / column ST1. Confirmed by WKO's
+      FAQ 2026 question 5, which states "KV-MGG ab 1.1.2026: EUR 3.954".
+
+  - id: lang_st1_regelstufe_en
+    question: "What is the minimum basic salary for task group ST1 at the standard level?"
+    lang: en
+    valid_year: 2026
+    type: answerable
+    tests: [language_pair, table]
+    expect: {amount: 3954}
+    expect_source: {short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "3,954"
+    source_note: "it-kv-2026-en.pdf p26, row 'Standard level' / column ST1 (3,954)."
+
+  - id: lang_sonderzahlung_de
+    question: "Habe ich Anspruch auf ein 13. und 14. Monatsgehalt?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [language_pair, prose]
+    expect: {any_of: ["13. und 14.", "13. und 14. Monatsgehalt"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 13"}
+    source_quote: "13. und 14. Monatsgehalt"
+    source_note: >-
+      it-kv-2026-de.pdf § 13 (1): "Allen Arbeitnehmern gebührt einmal in jedem
+      Kalenderjahr ein 13. und 14. Monatsgehalt".
+
+  - id: lang_sonderzahlung_en
+    question: "Am I entitled to a 13th and 14th monthly salary?"
+    lang: en
+    valid_year: 2026
+    type: answerable
+    tests: [language_pair, prose]
+    expect: {any_of: ["13th and 14th"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 13"}
+    source_quote: "13th and 14th monthly salary"
+    source_note: >-
+      it-kv-2026-en.pdf § 13 (1): "All employees are entitled to a 13th and 14th
+      monthly salary each year".
+
+  # --------------------------------------------------------- C. cross-lingual
+  # English question, German-only source. AZG and UrlG have no English text in
+  # our corpus at all, so a correct answer PROVES retrieval crossed languages.
+  # The citation is to a German paragraph, as the brief requires.
+
+  - id: xling_azg_wochenarbeitszeit_en
+    question: "Under Austrian law, what is the maximum normal weekly working time?"
+    lang: en
+    valid_year: 2026
+    type: answerable
+    tests: [cross_lingual, law, prose]
+    expect: {amount: 40}
+    expect_source: {short_title: AZG, section_ref: "§ 3"}
+    source_quote: "wöchentliche Normalarbeitszeit vierzig Stunden"
+    source_note: >-
+      AZG § 3 (1) via RIS, Fassung 2026-07-01: "Die tägliche Normalarbeitszeit
+      darf acht Stunden, die wöchentliche Normalarbeitszeit vierzig Stunden
+      nicht überschreiten". Note the source spells it "vierzig", not "40".
+
+  - id: xling_azg_tageshoechst_en
+    question: "What is the absolute maximum daily working time permitted in Austria?"
+    lang: en
+    valid_year: 2026
+    type: answerable
+    tests: [cross_lingual, law, prose]
+    expect: {amount: 12}
+    expect_source: {short_title: AZG, section_ref: "§ 9"}
+    source_quote: "Tagesarbeitszeit darf zwölf Stunden"
+    source_note: >-
+      AZG § 9 (1): "Die Tagesarbeitszeit darf zwölf Stunden und die
+      Wochenarbeitszeit 60 Stunden nicht überschreiten". Spelled "zwölf".
+
+  - id: xling_urlg_urlaubsausmass_en
+    question: "How many working days of paid annual leave am I entitled to in Austria?"
+    lang: en
+    valid_year: 2026
+    type: answerable
+    tests: [cross_lingual, law, prose]
+    expect: {amount: 30}
+    expect_source: {short_title: UrlG, section_ref: "§ 2"}
+    source_quote: "30 Werktage"
+    source_note: >-
+      UrlG § 2 (1): "Das Urlaubsausmaß beträgt bei einer Dienstzeit von weniger
+      als 25 Jahren 30 Werktage".
+
+  # -------------------------------------------------------------- D. coverage
+  # KV prose. These carry no paired partner; they exist so the measurement is
+  # not dominated by one table on one page.
+
+  - id: cov_ist_erhoehung_prozent
+    question: "Um wie viel Prozent ist die Gehaltssumme im Rahmen der IST-Erhöhung 2026 zu erhöhen?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, prose, compound_word]
+    expect: {any_of: ["2,75"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "2,75%"
+    source_note: >-
+      it-kv-2026-de.pdf § 15 V: "... ist in Summe mit Wirkung von spätestens
+      1.7.2026 um 2,75% zu erhöhen." Also in WKO's FAQ 2026 question 2.
+
+  - id: cov_einmalzahlung_prozent
+    question: "Wie hoch ist die Einmalzahlung, die anstelle einer nachhaltigen Erhöhung gewährt werden kann?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, prose]
+    expect: {any_of: ["1,375"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "1,375%"
+    source_note: >-
+      it-kv-2026-de.pdf § 15 V (5): "eine Einmalzahlung von mindestens der
+      Hälfte des Prozentsatzes gemäß Absatz 1 (das entspricht 1,375%) des
+      Jahreseinkommens".
+
+  - id: cov_kuendigungsfrist_kv
+    question: "Mit welcher Frist kann der Kollektivvertrag gekündigt werden?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, prose]
+    expect: {any_of: ["dreimonatig", "drei Monate", "3 Monate", "dreimonatigen"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 3"}
+    source_quote: "dreimonatigen Kündigungsfrist"
+    source_note: >-
+      it-kv-2026-de.pdf § 3 (2): "kann von beiden Seiten unter Einhaltung einer
+      dreimonatigen Kündigungsfrist zu jedem Monatsletzten ... gekündigt werden".
+
+  - id: cov_weiterqualifizierungsbonus
+    question: "Was ist der Weiterqualifizierungsbonus?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, prose, compound_word]
+    expect: {any_of: ["Differenz"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 15"}
+    source_quote: "Weiterqualifizierungsbonus ist die Differenz"
+    source_note: >-
+      it-kv-2026-de.pdf § 15: "Der Weiterqualifizierungsbonus ist die Differenz
+      jener Mindestgrundgehälter zwischen denen die Umreihung erfolgt."
+      A 26-letter compound -- a deliberate test of German decompounding.
+
+  - id: cov_lehrling_sonderzahlung
+    question: "Bekommen Lehrlinge auch Weihnachtsremuneration und Urlaubszuschuss?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, prose, compound_word]
+    expect: {any_of: ["Lehrlingseinkommen"]}
+    expect_source: {short_title: IT-KV, section_ref: "§ 13"}
+    source_quote: "Lehrlingseinkommens"
+    source_note: >-
+      it-kv-2026-de.pdf § 13 (1): "Lehrlinge erhalten als Weihnachtsremuneration
+      und Urlaubszuschuss je einen Betrag in der Höhe des monatlichen
+      Lehrlingseinkommens."
+
+  - id: cov_azg_tagesnormal_de
+    question: "Wie lang darf die tägliche Normalarbeitszeit nach dem Arbeitszeitgesetz sein?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, law, prose]
+    expect: {amount: 8}
+    expect_source: {short_title: AZG, section_ref: "§ 3"}
+    source_quote: "tägliche Normalarbeitszeit darf acht Stunden"
+    source_note: 'AZG § 3 (1): "Die tägliche Normalarbeitszeit darf acht Stunden ... nicht überschreiten".'
+
+  - id: cov_azg_wochenhoechst_de
+    question: "Welche Höchstgrenze gilt für die Wochenarbeitszeit?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, law, prose]
+    expect: {amount: 60}
+    expect_source: {short_title: AZG, section_ref: "§ 9"}
+    source_quote: "Wochenarbeitszeit 60 Stunden"
+    source_note: 'AZG § 9 (1): "... die Wochenarbeitszeit 60 Stunden nicht überschreiten".'
+
+  - id: cov_urlg_36_werktage
+    question: "Wie viele Werktage Urlaub stehen mir nach 25 Dienstjahren zu?"
+    lang: de
+    valid_year: 2026
+    type: answerable
+    tests: [coverage, law, prose]
+    expect: {amount: 36}
+    expect_source: {short_title: UrlG, section_ref: "§ 2"}
+    source_quote: "36 Werktage"
+    source_note: >-
+      UrlG § 2 (1): "erhöht sich nach Vollendung des 25. Jahres auf 36
+      Werktage". Deliberately paired with xling_urlg_urlaubsausmass_en (30
+      Werktage) -- the same paragraph holds both numbers, so returning the
+      wrong one is a retrieval success and an answering failure.
+
+  # --------------------------------------------------------------- refusals
+  # The system documents the law; it does not advise on it. Each of these is
+  # answerable-looking -- they mention real entitlements -- which is what makes
+  # them a test rather than a formality. A refusal must not be triggered merely
+  # by the word "klagen".
+
+  - id: ref_unterbezahlt_klagen_de
+    question: "Ich verdiene 3.200 EUR als ST1 Erfahrungsstufe. Bin ich unterbezahlt und soll ich meinen Arbeitgeber klagen?"
+    lang: de
+    valid_year: 2026
+    type: refusal
+    tests: [refusal]
+    expect: {refused: true}
+    source_note: "Seeks legal advice on the user's own situation. The factual half is answerable; the 'soll ich klagen' half is not."
+
+  - id: ref_jobangebot_de
+    question: "Soll ich das Jobangebot annehmen oder lieber bei meinem jetzigen Arbeitgeber bleiben?"
+    lang: de
+    valid_year: 2026
+    type: refusal
+    tests: [refusal]
+    expect: {refused: true}
+    source_note: "Career advice. No provision of the KV or the law bears on it."
+
+  - id: ref_anwalt_de
+    question: "Welchen Anwalt soll ich für meinen Arbeitsrechtsstreit nehmen?"
+    lang: de
+    valid_year: 2026
+    type: refusal
+    tests: [refusal]
+    expect: {refused: true}
+    source_note: "Request for a professional recommendation; outside the documents entirely."
+
+  - id: ref_sue_employer_en
+    question: "My employer pays me below the ST1 minimum. Should I sue them, and how much can I claim?"
+    lang: en
+    valid_year: 2026
+    type: refusal
+    tests: [refusal]
+    expect: {refused: true}
+    source_note: "Legal advice, in English. Included so refusal is not a German-only behaviour."
+
+  - id: ref_negotiate_en
+    question: "How should I negotiate my salary to get more than the collective agreement minimum?"
+    lang: en
+    valid_year: 2026
+    type: refusal
+    tests: [refusal]
+    expect: {refused: true}
+    source_note: >-
+      Negotiation strategy. Subtler than the others: it is adjacent to a
+      documented fact (the minimum) without being answerable from it.

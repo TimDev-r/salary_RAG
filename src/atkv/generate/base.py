@@ -56,18 +56,27 @@ class GenerationProvider(ABC):
         """
 
 
-def build_context(chunks: list[Chunk], max_chars: int = 6000) -> str:
+def build_context(chunks: list[Chunk], max_chars: int = 6000, lang: str = "de") -> str:
     """Render retrieved chunks for a prompt, each tagged with its citation.
 
-    The tag is inside the context, not appended afterwards, so the model can
-    attribute a specific sentence to a specific source instead of being handed
-    a wall of text and a list of citations to pair up by guesswork.
+    EXACTLY ONE BRACKETED FORM APPEARS IN THE CONTEXT.
+    An earlier version numbered the passages "[1] [IT-KV 2026, ..., § 15]",
+    and the model dutifully copied the nearest thing in brackets -- answering
+    "4.476 EUR brutto pro Monat [1] [3]". The figure was right and the citation
+    was useless. When two things look like citations, the model cannot be
+    blamed for picking the wrong one; the context has to offer only the form
+    we actually want back.
+
+    chunk_id is deliberately omitted too: it is an internal identifier, it
+    means nothing to a reader, and any token in the context is a token the
+    model might emit.
     """
+    label = "QUELLE" if lang == "de" else "SOURCE"
     out, total = [], 0
-    for i, c in enumerate(chunks, 1):
-        block = f"[{i}] {c.to_citation().render()} (chunk_id={c.chunk_id})\n{c.text}"
+    for c in chunks:
+        block = f"{label}: {c.to_citation().render()}\n{c.text}"
         if total + len(block) > max_chars:
             break
         out.append(block)
         total += len(block)
-    return "\n\n".join(out)
+    return "\n\n---\n\n".join(out)

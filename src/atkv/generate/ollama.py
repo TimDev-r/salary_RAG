@@ -31,33 +31,65 @@ from atkv.models import Chunk
 DEFAULT_MODEL = "qwen2.5:3b-instruct"
 DEFAULT_HOST = "http://localhost:11434"
 
+# The citation string ALREADY contains square brackets. An earlier prompt said
+# "give the source in square brackets", which double-bracketed it -- the English
+# model emitted "[SOURCE: [IT-KV 2026, ..., § 15]]" and the German one
+# generalised the bracket rule onto the refusal sentence, answering
+# "[Dazu findet sich ... keine Antwort.]" for questions it had the answer to.
+#
+# A 3B model follows a worked example far more reliably than a description of
+# a format, so each prompt ends with one.
+#
+# THE EXAMPLE USES A FICTIONAL DOCUMENT AND A SPELLED-OUT NUMBER, DELIBERATELY.
+# A first version demonstrated the format with a real-looking salary
+# ("ZT / Regelstufe: 2.459 EUR"). Asked for the ST1 Erfahrungsstufe figure, the
+# model answered "2.459 EUR brutto pro Monat [IT-KV 2026, § 15]" -- it copied
+# the number out of the EXAMPLE and attached a genuine citation to it. Correct
+# format, real source, wrong figure: exactly the failure this system exists to
+# prevent, and undetectable downstream because it looks perfect.
+#
+# So the example must not contain anything that could be mistaken for an
+# answer: a made-up agreement, a made-up paragraph, and a duration written as
+# a word rather than a figure. It carries NO four-digit number at all -- not
+# even a year -- because any salary-shaped token in the example is one the
+# model can emit as a figure. tests/test_generation.py enforces this
+# statically, and caught a stray "1999" the first time round.
 SYSTEM = {
     "de": (
         "Du bist ein Auskunftssystem für den österreichischen IT-Kollektivvertrag "
         "und das zugehörige Arbeitsrecht.\n"
         "REGELN:\n"
-        "1. Antworte AUSSCHLIESSLICH auf Basis der bereitgestellten Auszüge. "
-        "Verwende kein eigenes Wissen.\n"
-        "2. Nenne die Zahl oder Regel und danach die Fundstelle in eckigen Klammern, "
-        "genau so wie sie im Auszug steht.\n"
-        "3. Steht die Antwort nicht in den Auszügen, schreibe genau: "
-        "'Dazu findet sich in den vorliegenden Dokumenten keine Antwort.' "
-        "Rate niemals und ergänze nichts.\n"
-        "4. Beträge sind Bruttobeträge pro Monat, sofern der Auszug nichts anderes sagt.\n"
-        "5. Fasse dich kurz: zwei bis drei Sätze."
+        "1. Antworte AUSSCHLIESSLICH auf Basis der Auszüge. Verwende kein eigenes Wissen.\n"
+        "2. Nenne zuerst die Zahl oder die Regel, dann die Fundstelle. Kopiere als "
+        "Fundstelle den Text nach 'QUELLE:' exakt so, wie er dort steht.\n"
+        "3. Steht die Antwort nicht in den Auszügen, antworte mit genau diesem Satz "
+        "und sonst nichts: Dazu findet sich in den vorliegenden Dokumenten keine Antwort.\n"
+        "4. Beträge sind brutto pro Monat, sofern der Auszug nichts anderes sagt.\n"
+        "5. Höchstens zwei Sätze. Rate niemals.\n\n"
+        "BEISPIEL (erfundenes Dokument, nur zur Veranschaulichung des Formats)\n"
+        "QUELLE: [MUSTER-KV, Musterbestimmung, § 99]\n"
+        "Die Musterfrist beträgt sieben Werktage.\n"
+        "FRAGE: Wie lang ist die Musterfrist?\n"
+        "ANTWORT: Die Musterfrist beträgt sieben Werktage "
+        "[MUSTER-KV, Musterbestimmung, § 99]."
     ),
     "en": (
         "You are a reference system for the Austrian IT collective agreement "
         "and related labour law.\n"
         "RULES:\n"
-        "1. Answer ONLY from the provided excerpts. Do not use your own knowledge.\n"
-        "2. State the figure or rule, then the citation in square brackets, "
-        "exactly as it appears in the excerpt.\n"
-        "3. If the excerpts do not contain the answer, reply exactly: "
-        "'The available documents do not answer this question.' "
-        "Never guess and never add anything.\n"
+        "1. Answer ONLY from the excerpts. Do not use your own knowledge.\n"
+        "2. Give the figure or rule first, then the citation. For the citation, "
+        "copy the text after 'SOURCE:' exactly as it appears there.\n"
+        "3. If the excerpts do not contain the answer, reply with exactly this "
+        "sentence and nothing else: The available documents do not answer this question.\n"
         "4. Amounts are gross per month unless the excerpt says otherwise.\n"
-        "5. Be brief: two or three sentences."
+        "5. At most two sentences. Never guess.\n\n"
+        "EXAMPLE (fictional document, shown only to illustrate the format)\n"
+        "SOURCE: [SAMPLE-CA, sample provision, § 99]\n"
+        "The sample period is seven working days.\n"
+        "QUESTION: How long is the sample period?\n"
+        "ANSWER: The sample period is seven working days "
+        "[SAMPLE-CA, sample provision, § 99]."
     ),
 }
 
@@ -86,7 +118,7 @@ class OllamaProvider(GenerationProvider):
             return False
 
     def generate(self, question: str, chunks: list[Chunk], lang: str) -> Generated:
-        context = build_context(chunks)
+        context = build_context(chunks, lang=lang)
         user = (
             f"{'AUSZÜGE' if lang == 'de' else 'EXCERPTS'}:\n{context}\n\n"
             f"{'FRAGE' if lang == 'de' else 'QUESTION'}: {question}"

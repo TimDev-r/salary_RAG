@@ -19,7 +19,7 @@ ingest:  ## Fetch sources, build the index (cached after the first run)
 serve:  ## Run the API on :8000 (docs at /docs)
 	$(UV) uvicorn atkv.api:app --host 0.0.0.0 --port 8000
 
-test:  ## Ground-truth and unit tests (offline, fast)
+test:  ## Ground-truth, guard and generation tests
 	$(UV) pytest evals/ tests/ -q
 
 eval: test eval-retrieval  ## Everything the README reports

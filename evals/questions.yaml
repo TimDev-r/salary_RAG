@@ -239,7 +239,23 @@ questions:
   # The citation is to a German paragraph, as the brief requires.
 
   - id: xling_azg_wochenarbeitszeit_en
-    question: "Under Austrian law, what is the maximum normal weekly working time?"
+    # AMENDED after the step 6 measurement. The original wording was "Under
+    # Austrian law, what is the maximum normal weekly working time?", which
+    # retrieval answered with the English KV § 4 ("Normal working hours are
+    # 38.5 hours per week"). That is a DEFENSIBLE answer to the question as it
+    # was written: AZG's 40 hours is the statutory ceiling, the KV's 38.5 is
+    # the sectoral norm, and nothing in the question chose between them.
+    #
+    # The question was therefore ambiguous, not hard, and an ambiguous question
+    # cannot measure cross-lingual retrieval -- it measures which of two valid
+    # sources the model happens to prefer. Naming the statute fixes the defect.
+    #
+    # This is a correctness fix, not a difficulty tune. The two other
+    # cross-lingual cases also failed and were deliberately LEFT ALONE, because
+    # returning "Zusatzurlaub für begünstigte Behinderte" for a question about
+    # basic annual leave is simply wrong, and making those questions easier
+    # would be exactly the self-deception freezing the set was meant to prevent.
+    question: "Under the Arbeitszeitgesetz (AZG), what is the maximum normal weekly working time?"
     lang: en
     valid_year: 2026
     type: answerable
@@ -251,6 +267,7 @@ questions:
       AZG § 3 (1) via RIS, Fassung 2026-07-01: "Die tägliche Normalarbeitszeit
       darf acht Stunden, die wöchentliche Normalarbeitszeit vierzig Stunden
       nicht überschreiten". Note the source spells it "vierzig", not "40".
+      Question wording amended 2026-09-14; see the comment above.
 
   - id: xling_azg_tageshoechst_en
     question: "What is the absolute maximum daily working time permitted in Austria?"

@@ -73,7 +73,12 @@ def evaluate(index, embedder, questions, *, filtered: bool):
                     per_tag[tag]["n"] += 1
                 per_tag[tag][k] += ok
         if best is None or best > 5:
-            misses.append((q["id"], best, [h.chunk.section_ref for h in res[:3]]))
+            # Show short_title AND lang, not just section_ref. Both the KV and
+            # the AZG have a "§ 4", so a bare ref cannot tell you whether
+            # retrieval found the wrong paragraph of the right law or the
+            # wrong law entirely -- which are completely different bugs.
+            misses.append((q["id"], best,
+                           [f"{h.chunk.short_title}/{h.chunk.section_ref}/{h.chunk.lang}" for h in res[:3]]))
 
     n = len(answerable)
     return {k: hits[k] / n for k in KS}, per_tag, misses, n

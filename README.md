@@ -86,12 +86,34 @@ extracted. The head must be a **noun**, detected for free from capitalisation
 
 | | R@1 | R@3 | R@5 | R@10 |
 |---|---|---|---|---|
-| dense only (e5-small, bilingual query) | **0.84** | 0.88 | 0.88 | **0.96** |
-| lexical only (BM25 + decompounding + query translation) | 0.76 | 0.88 | 0.88 | 0.92 |
-| hybrid (three-way RRF) | 0.80 | **0.88** | **0.88** | 0.92 |
-| hybrid + cross-encoder rerank | 0.84 | 0.88 | **0.92** | **0.96** |
+| dense only (e5-small, bilingual query) | 0.80 | 0.88 | 0.92 | 0.96 |
+| lexical only (BM25 + decompounding) | 0.76 | 0.84 | 0.92 | 0.96 |
+| **hybrid (four-way RRF)** | 0.80 | **0.92** | **0.92** | **0.96** |
 
-**The dense query is issued in both languages.** A bi-encoder prefers
+Reranking with the cross-encoder no longer changes these numbers. The fast path
+reaches what previously took ~1400 ms per query, so the flag remains off by
+default.
+
+**Every paragraph carries its own title, and that was the single biggest fix.**
+RIS publishes an `<ueberschrift typ="para">` for each paragraph and the parser
+was keeping only the `typ="g*"` Gliederung levels, silently discarding:
+
+```
+§ 3   Normalarbeitszeit
+§ 4   Andere Verteilung der Normalarbeitszeit
+§ 4a  Normalarbeitszeit bei Schichtarbeit
+§ 9   Höchstgrenzen der Arbeitszeit
+```
+
+Without them those paragraphs are near-identical prose about *Normalarbeitszeit*
+scoring within 0.007 of one another, and a question about the maximum daily
+working time cannot find the paragraph literally titled *"Höchstgrenzen der
+Arbeitszeit"*. Restoring them moved R@5 from 0.88 to 0.92, cross-lingual from
+0.33 to 0.67, law from 0.50 to 0.67 and prose from 0.82 to 0.88 — for a
+one-line parser change and no extra compute.
+
+**Each query is issued in both languages, as four separate ranked lists**
+(dense-EN, dense-DE, lexical-EN, lexical-DE). A bi-encoder prefers
 same-language matches almost regardless of topical fit — the target of the
 annual-leave question sat at dense rank **87** for the English query and rank
 **1** for its German translation. Neither wins everywhere (a question the
@@ -104,7 +126,18 @@ comparable, which is why RRF is used here at all.
 |---|---|---|---|---|
 | dense(EN) + lexical | 0.84 | 0.84 | 0.84 | 1.00 |
 | max-merged dense + lexical | 0.84 | 0.84 | 0.88 | 0.83 |
-| **dense(EN) + dense(DE) + lexical** | **0.88** | **0.88** | **0.92** | **1.00** |
+| dense(EN) + dense(DE) + lexical | 0.88 | 0.88 | 0.92 | 1.00 |
+| **four lists, one per language per retriever** | **0.92** | **0.92** | **0.96** | **1.00** |
+
+The lexical query used to be the English and German forms concatenated, which
+let BM25 match English chunks on the English half — two of three lists were
+English-biased and outvoted the single list that could see a German-only
+answer. Separate lists make the vote 2-2.
+
+Three fusion rules (rank-sum, best-of-max, and both combined) then scored
+**identically** — same totals, same categories, only a different pair of
+questions failing. That is where fusion tuning stopped: at n=25 it would have
+been rearranging noise.
 
 Once the dense query is bilingual, **BM25 adds nothing measurable** — every
 category is identical with and without it, and the R@1/R@10 differences are one

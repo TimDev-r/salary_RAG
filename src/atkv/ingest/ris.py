@@ -144,8 +144,22 @@ def extract_text(xml_bytes: bytes) -> tuple[str, list[str]]:
                     # "Text" opens the body; any later titel closes it.
                     in_body = text.strip().lower() == "text"
                     continue
-                if in_body and typ and typ.startswith("g"):
-                    headings.append(text)   # ABSCHNITT 1 / Geltungsbereich
+                # typ="g1"/"g2" are Gliederung levels (ABSCHNITT 1 /
+                # Geltungsbereich). typ="para" is the PARAGRAPH'S OWN TITLE,
+                # and dropping it threw away the single most discriminative
+                # thing RIS provides:
+                #
+                #   § 3   Normalarbeitszeit
+                #   § 4   Andere Verteilung der Normalarbeitszeit
+                #   § 4a  Normalarbeitszeit bei Schichtarbeit
+                #   § 9   Höchstgrenzen der Arbeitszeit
+                #
+                # Without them those paragraphs are near-identical prose about
+                # Normalarbeitszeit scoring within 0.007 of each other, and a
+                # question about maximum daily working time cannot find the
+                # paragraph literally titled "Höchstgrenzen der Arbeitszeit".
+                if in_body and typ and (typ.startswith("g") or typ == "para"):
+                    headings.append(text)
                     lines.append(text)
                 continue
             if in_body and tag in BLOCK:

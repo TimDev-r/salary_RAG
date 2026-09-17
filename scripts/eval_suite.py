@@ -119,9 +119,13 @@ class Bench:
             if de and bilingual_dense:
                 d_de = self.dense.search(self.emb.encode_query(de), k=POOL, as_of=as_of)
 
-        lq = f"{q['question']} {de}" if de else q["question"]
-        l = self.lex.search(lq, k=POOL, as_of=as_of) if lexical else []
-        return [r.chunk for r in cap_sections(rrf(d, l, k=POOL, extra_dense=d_de), k)]
+        l, l_de = [], None
+        if lexical:
+            l = self.lex.search(q["question"], k=POOL, as_of=as_of)
+            if de:
+                l_de = self.lex.search(de, k=POOL, as_of=as_of)
+        return [r.chunk for r in cap_sections(
+            rrf(d, l, k=POOL, extra_dense=d_de, extra_lexical=l_de), k)]
 
 
 def recall(bench, questions, **kw) -> dict[int, float]:

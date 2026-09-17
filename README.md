@@ -100,7 +100,43 @@ Reranking with a multilingual cross-encoder reaches **R@5 0.88 / R@10 0.96** at
 **~1400 ms** against ~4 ms — a trade-off, not a free win, so it sits behind a
 flag (`rerank: true`).
 
-### 4. Answers, citations, refusals
+### 4. Answers and citations — the language model is a net negative here
+
+| | answer accuracy | citation accuracy | per question |
+|---|---|---|---|
+| **extractive** (top chunk verbatim, no LLM) | **19/25 (0.76)** | 21/25 (0.84) | ~0 s |
+| ollama `qwen2.5:3b-instruct` | 17/25 (0.68) | 21/25 (0.84) | 26.6 s |
+
+A 3B model scores **two questions worse** than returning the retrieved passage
+unchanged, and takes 26 seconds to do it. That is an uncomfortable result and
+it is reported because it is what was measured; at n=25 the gap is not
+statistically strong, but the failures are specific and diagnosable rather
+than random.
+
+Splitting the 8 wrong answers by where they went wrong:
+
+| | | |
+|---|---|---|
+| **retrieval** | 4 | the cross-lingual and sibling-paragraph cases already listed under limitations |
+| **generation** | 4 | `lang_sonderzahlung_de/en` refused although § 13 was in context; `cov_kuendigungsfrist_kv` quoted § 3 but dropped *"dreimonatigen Kündigungsfrist"*; `cov_urlg_36_werktage` read **30** out of UrlG § 2 when the question asked for the figure after 25 years of service — the paragraph contains both numbers |
+
+That last one is not bad luck. The eval set deliberately pairs two questions
+against a paragraph holding both 30 and 36 Werktage, precisely because
+returning it is a retrieval success and an answering failure. It caught
+exactly what it was built to catch.
+
+**Why extractive wins.** Step 4 verbalises every table cell into a sentence, so
+the retrieved chunk *is already an answer*: `ST1 / Erfahrungsstufe: 4.476 EUR
+brutto pro Monat`. There is nothing for a model to add, and three ways for it
+to subtract — refuse, omit, or pick the wrong number from a paragraph that
+holds several. The generator earns its place on prose questions that need
+rephrasing; on a table lookup it is a liability.
+
+The service therefore ships with both, routes to the model when one is
+reachable, and falls back to extractive when it is not — and the fallback is
+not a degraded mode so much as the higher-scoring one on this corpus.
+
+### Refusals
 
 | | |
 |---|---|
@@ -226,9 +262,15 @@ from the log without re-running anything.
   chunks crowded law chunks out of the pool — was wrong: the pool already
   contained the target for 24 of 25 questions. The problem is ranking within
   the pool, not admission to it.
-- **Generation is slow on 8 GB.** ~10.8 tok/s where a healthy M1 does 20–25,
-  because the host carries ~15 GB of swap. Streaming puts the first token on
-  screen in ~3 s instead of ~11 s, but does not make it faster.
+- **Generation is slow, and the latency figures are host-dependent.** The
+  numbers above were measured at ~10.8 tok/s with 87 tok/s prompt evaluation,
+  on a machine carrying ~15 GB of swap against 8 GB of RAM. After closing a
+  browser that had accumulated ~8.6 GB of footprint over 34 days of uptime and
+  rebooting, prompt evaluation rose to **136 tok/s — 57% faster with no code
+  change**. Wall-clock timings for the same query varied threefold between runs
+  under pressure, which is why model and context decisions in this project were
+  made on token counts rather than seconds. Streaming puts the first token on
+  screen in ~3 s instead of ~11 s, but does not make anything faster.
 - **Law versioning is single-version.** RIS resolves statute versions
   server-side at fetch time, so the index holds one consolidated version;
   `doc_id` does not encode the Fassung date.

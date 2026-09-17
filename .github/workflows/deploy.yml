@@ -37,7 +37,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/atkv
+  # NOTE: the image name is computed in the publish job, not here. Container
+  # registry repository names must be lowercase, and github.repository_owner
+  # preserves the account's capitalisation ("TimDev-r"), which buildx rejects
+  # with "repository name must be lowercase".
   RESOURCE_GROUP: rg-atkv
   CONTAINER_APP: ca-atkv
   OMP_NUM_THREADS: "1"   # faiss and torch each bundle OpenMP; see atkv/__init__.py
@@ -110,7 +113,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}   # issued per-run by GitHub, not stored by us
 
       - id: meta
-        run: echo "image=${IMAGE}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${owner}/atkv:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "latest=ghcr.io/${owner}/atkv:latest" >> "$GITHUB_OUTPUT"
 
       # The build fetches the sources again inside the image and runs the same
       # page-1 assertion, so a build fails rather than producing an image that
@@ -122,7 +128,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.image }}
-            ${{ env.IMAGE }}:latest
+            ${{ steps.meta.outputs.latest }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false

@@ -100,41 +100,48 @@ Reranking with a multilingual cross-encoder reaches **R@5 0.88 / R@10 0.96** at
 **~1400 ms** against ~4 ms — a trade-off, not a free win, so it sits behind a
 flag (`rerank: true`).
 
-### 4. Answers and citations — the language model is a net negative here
+### 4. Answers and citations
 
-| | answer accuracy | citation accuracy | per question |
+Two metrics, because a number can be right by coincidence:
+
+- **loose** — the expected figure or phrase appears in the answer.
+- **attributed** — it appears **and** the expected paragraph was in the context.
+
+`attributed` is the one to trust. Asked for the maximum daily working time
+(AZG § 9, twelve hours), the model once answered *"…is 12 hours [IT-KV 2026,
+§ 4]"* — right number, wrong law, with the correct paragraph never retrieved.
+For a system whose whole claim is provenance, an answer that cannot be
+attributed is luck rather than correctness.
+
+| provider | k | loose | attributed |
 |---|---|---|---|
-| **extractive** (top chunk verbatim, no LLM) | **19/25 (0.76)** | 21/25 (0.84) | ~0 s |
-| ollama `qwen2.5:3b-instruct` | 17/25 (0.68) | 21/25 (0.84) | 26.6 s |
+| **ollama `qwen2.5:3b-instruct`** | **3** | **19/25 (0.76)** | **18/25 (0.72)** |
+| ollama `qwen2.5:3b-instruct` | 5 | 17/25 (0.68) | 17/25 (0.68) |
+| extractive (top chunk verbatim, no LLM) | 3 | 19/25 (0.76) | 18/25 (0.72) |
+| extractive | 5 | 19/25 (0.76) | 18/25 (0.72) |
 
-A 3B model scores **two questions worse** than returning the retrieved passage
-unchanged, and takes 26 seconds to do it. That is an uncomfortable result and
-it is reported because it is what was measured; at n=25 the gap is not
-statistically strong, but the failures are specific and diagnosable rather
-than random.
+**Context size matters more than the model.** At k=5 the generator scored two
+questions below the extractive baseline; at k=3 it matches it exactly, at no
+cost in recall — the expected paragraph dropped out of the context for zero
+questions. Both failures it fixed were *selection* errors among correct
+candidates:
 
-Splitting the 8 wrong answers by where they went wrong:
+```
+cov_urlg_36_werktage   k=5  "30 Werktage [UrlG, § 2]."   <- UrlG § 2 states BOTH 30 and 36
+                       k=3  "36 Werktage [UrlG, § 2]."
+```
 
-| | | |
-|---|---|---|
-| **retrieval** | 4 | the cross-lingual and sibling-paragraph cases already listed under limitations |
-| **generation** | 4 | `lang_sonderzahlung_de/en` refused although § 13 was in context; `cov_kuendigungsfrist_kv` quoted § 3 but dropped *"dreimonatigen Kündigungsfrist"*; `cov_urlg_36_werktage` read **30** out of UrlG § 2 when the question asked for the figure after 25 years of service — the paragraph contains both numbers |
+Three failures survive at any k, and they are model-quality problems rather
+than retrieval or context ones: two questions refused with § 13 sitting in the
+context, and one answer that quoted § 3 while dropping *"dreimonatigen
+Kündigungsfrist"* — the entire substance of the answer.
 
-That last one is not bad luck. The eval set deliberately pairs two questions
-against a paragraph holding both 30 and 36 Werktage, precisely because
-returning it is a retrieval success and an answering failure. It caught
-exactly what it was built to catch.
-
-**Why extractive wins.** Step 4 verbalises every table cell into a sentence, so
-the retrieved chunk *is already an answer*: `ST1 / Erfahrungsstufe: 4.476 EUR
-brutto pro Monat`. There is nothing for a model to add, and three ways for it
-to subtract — refuse, omit, or pick the wrong number from a paragraph that
-holds several. The generator earns its place on prose questions that need
-rephrasing; on a table lookup it is a liability.
-
-The service therefore ships with both, routes to the model when one is
-reachable, and falls back to extractive when it is not — and the fallback is
-not a degraded mode so much as the higher-scoring one on this corpus.
+**What the generator is actually for.** Extractive can only return rank 1, so
+it fails whenever the best chunk is not the right one: asked for the LT salary
+it returned the § 15 prose chunk, while the model found the cell at rank 2.
+That is the trade — the model's freedom to choose among candidates fixes
+rank-1 misses and creates selection errors. Narrowing the context to k=3 keeps
+the first and largely removes the second.
 
 ### Refusals
 
@@ -262,6 +269,11 @@ from the log without re-running anything.
   chunks crowded law chunks out of the pool — was wrong: the pool already
   contained the target for 24 of 25 questions. The problem is ranking within
   the pool, not admission to it.
+- **A 3B generator adds little over the retrieved text.** It matches the
+  extractive baseline exactly at k=3 rather than beating it, because step 4
+  verbalises each table cell into a sentence that is already an answer. It
+  earns its place on rank-1 misses and on prose that needs rephrasing, not on
+  table lookups.
 - **Generation is slow, and the latency figures are host-dependent.** The
   numbers above were measured at ~10.8 tok/s with 87 tok/s prompt evaluation,
   on a machine carrying ~15 GB of swap against 8 GB of RAM. After closing a

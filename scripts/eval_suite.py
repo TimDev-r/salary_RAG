@@ -53,14 +53,35 @@ def is_hit(c, es) -> bool:
             and (not es.get("doc_id") or c.doc_id == es["doc_id"]))
 
 
-def digits(s: str) -> str:
-    return re.sub(r"\D", "", s)
+# Thousands separators only: a dot, comma or space BETWEEN digits where exactly
+# three digits follow. "4.476" and "4,476" both normalise to "4476"; the year in
+# "1.1.2026" does not, because "2026" is four digits.
+_THOUSANDS = re.compile(r"(?<=\d)[.,\s](?=\d{3}(?!\d))")
 
 
 def answer_matches(text: str, expect: dict) -> bool:
+    """Does the answer state the expected figure?
+
+    THE NUMBER IS MATCHED AS A NUMBER, NOT AS A SUBSTRING OF DIGITS.
+
+    An earlier version stripped every non-digit and then searched:
+
+        str(12) in <digits-only of "gültig ab 1.1.2026">  ->  "112026"  ->  True
+
+    "1.1.2026" contains no "12" -- only the stripping created one. That scored
+    a hit for six of the sixteen amount questions, whose expected values are
+    one or two digits (8, 12, 30, 36, 40, 60) and so collide with any date or
+    section number.
+
+    Worse, it was BIASED. The longer the answer, the more digits available to
+    collide, so a provider that returns a whole raw passage scored higher than
+    one returning a single sentence -- for reasons having nothing to do with
+    being right. The comparison it was used for is invalid.
+    """
     if "amount" in expect:
-        # Format-agnostic: the German answer writes 4.476 and the English 4,476.
-        return str(expect["amount"]) in digits(text)
+        amt = str(expect["amount"])
+        norm = _THOUSANDS.sub("", text)
+        return re.search(rf"(?<![\d.,]){amt}(?![\d.,]?\d)", norm) is not None
     return any(a.lower() in text.lower() for a in expect.get("any_of", []))
 
 
@@ -174,11 +195,13 @@ def main() -> None:
     print("\n" + "-" * 66)
     print(f"4. ANSWERS AND CITATIONS  (provider: {provider.name})")
     print("-" * 66)
-    correct = cited = grounded = 0
+    correct = attributed = cited = grounded = 0
     wrong = []
     t0 = time.perf_counter()
     for q in answerable:
-        res = full.retrieve(q, k=5)
+        # k=3 measured at 19/25 against k=5's 17/25 with identical recall:
+        # fewer candidates, fewer ways to choose the wrong one.
+        res = full.retrieve(q, k=3)
         out = provider.generate(q["question"], res, q["lang"])
         ok = answer_matches(out.text, q["expect"])
         # The citation must name the paragraph the ground truth points at.
@@ -187,12 +210,18 @@ def main() -> None:
         # answer could have been read off rather than recalled.
         quote = re.sub(r"\s+", " ", q["source_quote"]).lower()
         gr = any(quote in re.sub(r"\s+", " ", c.text).lower() for c in res)
-        correct += ok; cited += cite_ok; grounded += gr
+        correct += ok
+        # Strict: right figure AND the expected paragraph was actually there.
+        # A number can be right by coincidence -- "within 12 months" in IT-KV § 4
+        # satisfied a question about AZG § 9's twelve-hour limit.
+        attributed += ok and cite_ok
+        cited += cite_ok; grounded += gr
         if not ok:
             wrong.append((q["id"], q["expect"], out.text[:80]))
     n = len(answerable)
     gen_s = time.perf_counter() - t0
     print(f"  answer accuracy      {correct}/{n}  ({correct/n:.2f})   figure or phrase is correct")
+    print(f"  ATTRIBUTED accuracy  {attributed}/{n}  ({attributed/n:.2f})   ...and from the expected paragraph")
     print(f"  citation accuracy    {cited}/{n}  ({cited/n:.2f})   cites the expected paragraph")
     print(f"  grounded             {grounded}/{n}  ({grounded/n:.2f})   supporting text was in context")
     print(f"  {gen_s/n:.1f}s per question")

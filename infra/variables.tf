@@ -4,9 +4,19 @@ variable "subscription_id" {
 }
 
 variable "location" {
-  description = "Azure region. West Europe: most feature-complete and best student quota availability."
-  type        = string
-  default     = "westeurope"
+  description = <<-EOT
+    Azure region.
+
+    NOT westeurope. A new Azure for Students subscription is restricted to a
+    subset of regions; West Europe, North Europe, France Central, UK South and
+    East US all returned 403 RequestDisallowedByAzure -- "the selected region
+    is currently not accepting new customers". Probed live, not assumed.
+
+    Allowed for this subscription: germanywestcentral, swedencentral.
+    Frankfurt is the closer of the two to Austria and keeps the data in the EU.
+  EOT
+  type    = string
+  default = "germanywestcentral"
 }
 
 variable "prefix" {

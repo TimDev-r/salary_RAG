@@ -3,7 +3,10 @@
 Retrieval over the Austrian IT collective agreement (**IT-KV**) and related labour
 law, answering with a citation to the exact paragraph.
 
-![Demo: the same question for 2026 and 2025 returns different figures with different citations, and an advice-seeking question is refused](docs/demo.svg)
+**▶ [Interactive demo](https://timdev-r.github.io/atkv-demo.html)** — a recorded
+replay of a real session, in the chat UI the service itself serves at `/`.
+
+![The same question for 2026 and 2025 returns different figures with different citations, and an advice-seeking question is refused](docs/demo.svg)
 
 ```
 Q: Wie hoch ist das Mindestgrundgehalt für ST1 Erfahrungsstufe?
@@ -16,9 +19,11 @@ Q: Soll ich meinen Arbeitgeber klagen?
 A: (refused — the system documents the law, it does not advise on it)
 ```
 
-Every figure in that recording comes from a live call to the service — see
-[`docs/`](docs/) for how it is regenerated. Nothing is replayed from a fixture,
-so a retrieval regression breaks the demo.
+Every figure in both demos comes from a live call to the service — see
+[`docs/`](docs/). The terminal recording queries the running service directly,
+so a retrieval regression breaks it; the chat replay is a verbatim transcript of
+a real session, replayed rather than live because the deployed service scales to
+zero and a first visitor would otherwise wait ~60 s for a cold start.
 
 Everything runs locally. Total cost: **€0**. No paid APIs, no cloud resources,
 no trials.

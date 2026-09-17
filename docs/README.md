@@ -25,3 +25,30 @@ figures and citations stay correct).
 
 `demo.cast` is committed so the SVG can be re-rendered — different size,
 padding, theme — without re-running the service.
+
+
+## `demo-chat.html` — the chat replay
+
+Self-contained: no CDN, no build step, no framework. Works from `file://`, from
+GitHub Pages, or in an `<iframe>`.
+
+It is a **replay**, not a live client, and the page says so. The transcript in
+the `TRANSCRIPT` constant was captured verbatim from a real session — answers,
+citations, page numbers and latencies included. The reason it replays rather
+than calls the API is `minReplicas: 0`: the deployed service has nothing running
+between requests, so the first visitor after idle waits for a 2.6 GB image pull.
+On a portfolio link that reads as broken, not as cost-efficient.
+
+The live version of the same UI is served by the app itself at `/`
+(`src/atkv/static/index.html`), where the year selector makes the version filter
+something you do rather than something you read about.
+
+### Putting it on a GitHub Pages site
+
+```html
+<iframe src="atkv-demo.html" style="width:100%;height:640px;border:0"
+        title="AT-KV Assistant demo"></iframe>
+```
+
+Or copy `demo-chat.html` to the Pages repo and link it directly — it has no
+dependencies.

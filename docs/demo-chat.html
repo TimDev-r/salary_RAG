@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AT-KV Assistant — demo</title>
+<!--
+  A RECORDED REPLAY, not a live client.
+
+  Every answer, citation, page number and latency below was captured from a
+  real session against the running service and pasted in verbatim -- see the
+  TRANSCRIPT constant. It is a replay so that a portfolio link always works:
+  the deployed service scales to zero, so a live embed would show a blank page
+  for ~60s to the first visitor after idle, which reads as broken rather than
+  as cost-efficient.
+
+  Self-contained on purpose: no CDN, no build step, no framework. Drop it on
+  GitHub Pages and it works.
+-->
+<style>
+  :root{
+    --bg:#16161a; --panel:#1e1e24; --ink:#ececed; --muted:#9a9aa4;
+    --line:#2e2e37; --user:#3a3a46; --userink:#fff;
+    --accent:#7aa2f7; --chip:#242b3d; --warn:#e0b060; --warnbg:#2a2418;
+  }
+  @media (prefers-color-scheme:light){:root{
+    --bg:#f7f7f8; --panel:#fff; --ink:#1a1a1c; --muted:#6b6b73;
+    --line:#e4e4e8; --user:#1a1a1c; --userink:#fff;
+    --accent:#2f5fd0; --chip:#eef2fb; --warn:#8a5a00; --warnbg:#fff6e5;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+  .wrap{max-width:780px;margin:0 auto;padding:22px 16px 36px}
+  header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  h1{font-size:18px;margin:0;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px}
+  .replaynote{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+       color:var(--muted);font-size:12.5px;margin:14px 0 6px}
+  .replaynote b{color:var(--ink);font-weight:600}
+  button.replay{padding:7px 12px;border:1px solid var(--line);border-radius:999px;
+       background:var(--panel);color:var(--ink);font:inherit;font-size:12.5px;cursor:pointer}
+  .msgs{display:flex;flex-direction:column;gap:15px;margin-top:14px;min-height:320px}
+  .row{display:flex;animation:in .28s ease both}
+  @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .row.me{justify-content:flex-end}
+  .bubble{max-width:min(92%,600px);padding:11px 14px;border-radius:15px;
+       background:var(--panel);border:1px solid var(--line);white-space:pre-wrap;word-wrap:break-word}
+  .row.me .bubble{background:var(--user);color:var(--userink);border-color:transparent;border-bottom-right-radius:5px}
+  .row.bot .bubble{border-bottom-left-radius:5px}
+  .bubble.refused{border-left:3px solid var(--warn);background:var(--warnbg)}
+  .cites{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .cite{display:inline-flex;gap:6px;background:var(--chip);color:var(--accent);
+       border-radius:999px;padding:3px 10px;font-size:12px;font-weight:500;animation:in .25s ease both}
+  .meta{color:var(--muted);font-size:11.5px;margin-top:8px;font-variant-numeric:tabular-nums}
+  .dots span{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--muted);
+       margin-right:3px;animation:b 1.2s infinite}
+  .dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+  @keyframes b{0%,60%,100%{opacity:.25}30%{opacity:1}}
+  .caption{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);
+       margin-top:20px;padding-top:14px}
+  .caption code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:11.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AT-KV Assistant</h1>
+    <span class="sub">Austrian IT collective agreement &amp; labour law — answered with a citation</span>
+  </header>
+
+  <div class="replaynote">
+    <span><b>Recorded replay.</b> Real answers, citations and latencies from a live session.</span>
+    <button class="replay" id="again">↻ Replay</button>
+  </div>
+
+  <div class="msgs" id="msgs"></div>
+
+  <div class="caption">
+    The same question is asked twice, changing only <b>which year is in force</b>.
+    The 2025 and 2026 agreements are ~95% identical text on the same page, so the
+    difference cannot come from similarity — it comes from a hard metadata filter
+    applied <b>before</b> ranking. Measured effect: <code>retrieval@1 0.64 → 0.80</code>.
+    The third question asks for advice and is refused.
+  </div>
+</div>
+
+<script>
+// Captured verbatim from a live session. Nothing here is invented.
+const TRANSCRIPT = [
+  {who:"me", text:"Wie hoch ist das Mindestgrundgehalt für ST1 Erfahrungsstufe?"},
+  {who:"bot", think:900,
+   cites:["IT-KV 2026, § 15  p26"],
+   meta:"in force 2026-07-01 · retrieval 803 ms · total 7578 ms · ollama",
+   text:"Die Mindestgrundgehälter betragen ab 1.1.2026:\nST1 / Erfahrungsstufe: 4.476 EUR brutto pro Monat [IT-KV 2026, § 15]."},
+  {who:"me", text:"Wie hoch ist das Mindestgrundgehalt für ST1 Erfahrungsstufe?", note:"— same question, year switched to 2025"},
+  {who:"bot", think:700,
+   cites:["IT-KV 2025, § 15  p26","IT-KV 2025, § 15  p21"],
+   meta:"in force 2025-07-01 · retrieval 556 ms · total 11990 ms · ollama",
+   text:"Die Mindestgrundgehälter betragen ab 1.1.2025:\nST1 / Erfahrungsstufe: 4.350 EUR brutto pro Monat [IT-KV 2025, § 15]."},
+  {who:"me", text:"Soll ich meinen Arbeitgeber klagen?"},
+  {who:"bot", think:250, refused:true,
+   text:"Diese Frage betrifft eine persönliche Empfehlung oder Rechtsberatung. Dieses System gibt ausschließlich den Inhalt des Kollektivvertrags und der zitierten Gesetze wieder und beantwortet keine Fragen dazu, was Sie tun sollten. Für eine Einschätzung Ihres konkreten Falls wenden Sie sich bitte an die Arbeiterkammer, Ihre Gewerkschaft oder eine Rechtsanwältin bzw. einen Rechtsanwalt."}
+];
+
+const msgs = document.getElementById('msgs');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function bubble(cls){
+  const row = document.createElement('div'); row.className = 'row ' + cls;
+  const b = document.createElement('div'); b.className = 'bubble';
+  row.appendChild(b); msgs.appendChild(row);
+  return b;
+}
+
+async function typeInto(el, text, perChar){
+  for(let i = 0; i < text.length; i++){
+    el.textContent = text.slice(0, i + 1);
+    if(i % 2 === 0) await sleep(perChar);
+  }
+}
+
+async function play(){
+  msgs.innerHTML = '';
+  document.getElementById('again').disabled = true;
+
+  for(const turn of TRANSCRIPT){
+    if(turn.who === 'me'){
+      const b = bubble('me');
+      await typeInto(b, turn.text, 14);
+      await sleep(450);
+      continue;
+    }
+
+    const b = bubble('bot');
+    b.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
+    await sleep(turn.think || 600);
+
+    if(turn.refused){
+      b.className = 'bubble refused';
+      b.textContent = '';
+      await typeInto(b, turn.text, 5);
+      await sleep(900);
+      continue;
+    }
+
+    // Citations first: they are known the moment retrieval finishes, seconds
+    // before the first generated token. That ordering is the point.
+    b.innerHTML = '';
+    const answer = document.createElement('div'); b.appendChild(answer);
+    const cites = document.createElement('div'); cites.className = 'cites'; b.appendChild(cites);
+    for(const c of turn.cites || []){
+      const el = document.createElement('span'); el.className = 'cite'; el.textContent = c;
+      cites.appendChild(el); await sleep(220);
+    }
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = turn.meta; b.appendChild(meta);
+
+    await sleep(400);
+    await typeInto(answer, turn.text, 11);
+    await sleep(1100);
+  }
+
+  document.getElementById('again').disabled = false;
+}
+
+document.getElementById('again').onclick = play;
+play();
+</script>
+</body>
+</html>

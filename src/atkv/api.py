@@ -27,7 +27,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from atkv import guard, logging as jlog
 from atkv.generate.base import GenerationProvider
@@ -136,6 +136,21 @@ def _provider() -> GenerationProvider:
     """
     ollama: OllamaProvider = STATE["ollama"]
     return ollama if ollama.available() else STATE["extractive"]
+
+
+STATIC = Path(__file__).resolve().parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    """A single self-contained page: the chat UI.
+
+    No CDN and no build step, deliberately. The container has no outbound
+    internet at runtime and the image is built offline, so anything fetched
+    from a CDN would be a blank page in production and would work fine in
+    development -- the worst kind of bug.
+    """
+    return FileResponse(STATIC / "index.html", media_type="text/html")
 
 
 @app.get("/healthz")

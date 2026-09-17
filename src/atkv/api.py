@@ -34,7 +34,7 @@ from atkv.generate.base import GenerationProvider
 from atkv.generate.extractive import ExtractiveProvider
 from atkv.generate.ollama import OllamaProvider
 from atkv.models import QueryRequest, QueryResponse
-from atkv.retrieve.pipeline import RetrievalPipeline
+from atkv.retrieve.pipeline import Coverage, RetrievalPipeline
 
 ROOT = Path(os.environ.get("ATKV_ROOT", Path(__file__).resolve().parents[2]))
 INDEX_DIR = ROOT / "data/index/serving"
@@ -88,6 +88,45 @@ app = FastAPI(
 )
 
 
+def _coverage_notice(gaps: list[Coverage], as_of, lang: str) -> str | None:
+    """Say plainly when the index cannot cover the date that was asked about.
+
+    The failure this prevents: ask about 2027 and every collective-agreement
+    chunk falls out of the filter while all the law chunks survive, because
+    statutes have no end date. The service then answers from labour law alone
+    and looks entirely normal. A user asking for a 2027 salary gets no figure
+    and no reason -- which reads as "the system is bad", not "the index stops
+    at 2026".
+
+    Nothing out-of-window is ever substituted. Quoting the 2026 table in 2027
+    as though it were current would be a wrong number with a real citation
+    attached, which is the one outcome this project exists to avoid.
+    """
+    if not gaps:
+        return None
+    names = {"kv": ("Kollektivvertrag", "collective agreement"),
+             "law": ("Gesetzestexte", "statutes")}
+    parts = []
+    for g in gaps:
+        de, en = names.get(g.source_type, (g.source_type, g.source_type))
+        until = g.latest.isoformat() if g.latest else "-"
+        parts.append((de, en, g.earliest.isoformat(), until))
+    if lang == "de":
+        return (
+            "Hinweis: Der Index deckt den Stichtag " + as_of.isoformat() + " nicht "
+            "vollständig ab. " + "; ".join(
+                f"{de}: nur {frm} bis {to}" for de, _, frm, to in parts) + ". "
+            "Die Antwort stützt sich daher nur auf die übrigen Quellen. Es werden "
+            "bewusst KEINE Werte aus einem abgelaufenen Dokument als aktuell ausgegeben."
+        )
+    return (
+        "Note: the index does not fully cover " + as_of.isoformat() + ". " +
+        "; ".join(f"{en}: only {frm} to {to}" for _, en, frm, to in parts) + ". "
+        "The answer therefore draws only on the remaining sources. Figures from an "
+        "expired document are deliberately NOT presented as current."
+    )
+
+
 def _provider() -> GenerationProvider:
     """Route to a model if one is reachable, else to the extractive provider.
 
@@ -102,12 +141,27 @@ def _provider() -> GenerationProvider:
 @app.get("/healthz")
 def healthz() -> dict:
     p: RetrievalPipeline = STATE.get("pipeline")
+    if p is None:
+        return {"status": "starting", "chunks": 0}
+    from datetime import date as _date
+    today = _date.today()
+    cov = p.coverage()
+    stale = [g.source_type for g in p.gaps_on(today)]
     return {
-        "status": "ok" if p else "starting",
-        "chunks": len(p.chunks) if p else 0,
-        "embedding_model": p.dense.model_name if p else None,
+        # Degraded, not ok: the service answers, but a source type cannot cover
+        # today, so an operator should see it here rather than learn it from a
+        # user's puzzling answer.
+        "status": "degraded" if stale else "ok",
+        "chunks": len(p.chunks),
+        "embedding_model": p.dense.model_name,
         "rerank_enabled": ENABLE_RERANK,
-        "generation_provider": _provider().name if p else None,
+        "generation_provider": _provider().name,
+        "today": today.isoformat(),
+        "coverage": {st: {"from": c.earliest.isoformat(),
+                          "to": c.latest.isoformat() if c.latest else None,
+                          "chunks": c.n_chunks}
+                     for st, c in sorted(cov.items())},
+        "stale_sources": stale,
     }
 
 
@@ -151,7 +205,9 @@ def query(req: QueryRequest) -> QueryResponse:
     if p is None:
         raise HTTPException(503, "index not ready")
 
-    result = p.search(req.question, as_of=req.as_of(), k=req.k, lang=req.lang,
+    as_of = req.as_of()
+    notice = _coverage_notice(p.gaps_on(as_of), as_of, req.lang)
+    result = p.search(req.question, as_of=as_of, k=req.k, lang=req.lang,
                       tenant_id=req.tenant_id, rerank=req.rerank)
     chunks = [r.chunk for r in result.chunks]
 
@@ -163,7 +219,7 @@ def query(req: QueryRequest) -> QueryResponse:
     jlog.log(
         log, logging.INFO, "query", trace_id=trace_id,
         question=req.question, lang=req.lang, valid_year=req.valid_year,
-        as_of=str(req.as_of()), tenant_id=req.tenant_id,
+        as_of=str(as_of), tenant_id=req.tenant_id, coverage_gap=bool(notice),
         rerank=result.used_rerank, translated=result.used_translation,
         pool_size=result.pool_size, provider=gen.provider, model=gen.model,
         retrieved=[
@@ -180,6 +236,8 @@ def query(req: QueryRequest) -> QueryResponse:
         citations=[c.to_citation() for c in chunks],
         trace_id=trace_id,
         refused=False,
+        as_of=as_of,
+        notice=notice,
     )
 
 
@@ -225,14 +283,20 @@ def query_stream(req: QueryRequest) -> StreamingResponse:
             yield sse("error", {"trace_id": trace_id, "error": "index not ready"})
             return
 
-        result = p.search(req.question, as_of=req.as_of(), k=req.k, lang=req.lang,
+        as_of = req.as_of()
+        notice = _coverage_notice(p.gaps_on(as_of), as_of, req.lang)
+        result = p.search(req.question, as_of=as_of, k=req.k, lang=req.lang,
                           tenant_id=req.tenant_id, rerank=req.rerank)
         chunks = [r.chunk for r in result.chunks]
         retrieval_ms = round((time.perf_counter() - t0) * 1000, 1)
 
+        # The notice rides in meta, which arrives BEFORE any answer text, so a
+        # caveat about coverage is on screen before the figure it qualifies.
         yield sse("meta", {
             "trace_id": trace_id,
             "retrieval_ms": retrieval_ms,
+            "as_of": as_of.isoformat(),
+            "notice": notice,
             "citations": [c.to_citation().model_dump() for c in chunks],
         })
 
@@ -251,7 +315,7 @@ def query_stream(req: QueryRequest) -> StreamingResponse:
         jlog.log(
             log, logging.INFO, "query", trace_id=trace_id, stream=True,
             question=req.question, lang=req.lang, valid_year=req.valid_year,
-            as_of=str(req.as_of()), tenant_id=req.tenant_id,
+            as_of=str(as_of), tenant_id=req.tenant_id, coverage_gap=bool(notice),
             rerank=result.used_rerank, translated=result.used_translation,
             pool_size=result.pool_size, provider=provider.name,
             retrieved=[

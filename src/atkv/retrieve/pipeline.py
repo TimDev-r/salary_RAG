@@ -24,6 +24,27 @@ POOL = 50
 
 
 @dataclass
+class Coverage:
+    """What date range the index can actually answer for, per source type.
+
+    The laws have no end date -- a paragraph in force stays in force until
+    repealed -- so they cover any future date. The collective agreements do
+    not: each is valid for one calendar year. Ask about 2027 today and every
+    KV chunk drops out of the filter while all the law chunks remain, so the
+    system answers from labour law alone and nothing says the agreement is
+    missing. That is the gap this type exists to make visible.
+    """
+
+    source_type: str
+    earliest: date
+    latest: date | None   # None means "no end date" -- in force indefinitely
+    n_chunks: int
+
+    def covers(self, day: date) -> bool:
+        return day >= self.earliest and (self.latest is None or day <= self.latest)
+
+
+@dataclass
 class RetrievalResult:
     chunks: list[RetrievedChunk]
     used_rerank: bool
@@ -47,6 +68,19 @@ class RetrievalPipeline:
         emb = Embedder(model)
         dense = DenseIndex(chunks, emb.encode_passages([c.text for c in chunks]), model)
         return cls(chunks, emb, dense, LexicalIndex(chunks), reranker, translator)
+
+    def coverage(self) -> dict[str, Coverage]:
+        out: dict[str, Coverage] = {}
+        for st in {c.source_type for c in self.chunks}:
+            group = [c for c in self.chunks if c.source_type == st]
+            latest = None if any(c.valid_to is None for c in group) else max(
+                c.valid_to for c in group if c.valid_to is not None)
+            out[st] = Coverage(st, min(c.valid_from for c in group), latest, len(group))
+        return out
+
+    def gaps_on(self, day: date) -> list[Coverage]:
+        """Source types the index cannot answer for on `day`."""
+        return [c for c in self.coverage().values() if not c.covers(day)]
 
     def search(self, question: str, *, as_of: date | None = None, k: int = 8,
                lang: str = "de", tenant_id: str = "public",

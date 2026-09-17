@@ -173,7 +173,13 @@ class RetrievedChunk(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
-    valid_year: int = Field(ge=2025, le=2030, description="Scopes retrieval to documents in force in this year")
+    valid_year: int | None = Field(
+        default=None, ge=2025, le=2030,
+        description=(
+            "Year to scope retrieval to. Omit it for 'whatever is in force today', "
+            "which is what a user who does not name a year means."
+        ),
+    )
     lang: Lang = Field(default="de", description="Language of the ANSWER. Sources may be in the other language.")
     tenant_id: str = "public"
     k: int = Field(
@@ -190,10 +196,18 @@ class QueryRequest(BaseModel):
     def as_of(self) -> date:
         """The date the version filter tests against.
 
-        Mid-year is deliberate: 1 January would sit exactly on the boundary of
-        every 'gilt ab 1.1.' document, and boundary conditions are where
-        off-by-one bugs live. 1 July is unambiguously inside the year.
+        With no year given this is TODAY, which is what someone asking "what is
+        the ST1 minimum?" means. Requiring a year rejected that question
+        outright with a 422, which is a poor answer to the commonest question
+        the system will get.
+
+        With a year given, 1 July. Mid-year is deliberate: 1 January sits
+        exactly on the boundary of every "gilt ab 1.1." document, and boundary
+        conditions are where off-by-one bugs live. 1 July is unambiguously
+        inside the year.
         """
+        if self.valid_year is None:
+            return date.today()
         return date(self.valid_year, 7, 1)
 
 
@@ -203,3 +217,17 @@ class QueryResponse(BaseModel):
     trace_id: str
     refused: bool = False
     refusal_reason: str | None = None
+    as_of: date | None = Field(
+        default=None,
+        description="The date the version filter used. Echoed back so a caller who "
+                    "omitted the year can see which one they actually got.",
+    )
+    notice: str | None = Field(
+        default=None,
+        description=(
+            "Set when the answer is limited in a way the user cannot see -- above all "
+            "when the requested date falls outside the collective agreement's coverage. "
+            "Without it, asking about 2027 returns an answer built only from labour law, "
+            "with no indication that the agreement is missing entirely."
+        ),
+    )

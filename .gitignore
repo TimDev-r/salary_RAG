@@ -22,3 +22,19 @@ __pycache__/
 
 # --- macOS ---
 .DS_Store
+
+# --- Terraform ---------------------------------------------------------
+# State records which real Azure resources belong to this config, and it
+# contains every attribute the API returned -- including anything sensitive.
+# It is never committed.
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/.terraform.lock.hcl
+infra/*.tfvars
+!infra/*.tfvars.example
+# A saved plan carries every attribute the provider resolved, including ones
+# the plan output prints as "(sensitive value)" -- e.g. the Log Analytics
+# primary_shared_key. It is a build artefact, not source.
+infra/tfplan
+infra/*.tfplan

@@ -3,6 +3,8 @@
 Retrieval over the Austrian IT collective agreement (**IT-KV**) and related labour
 law, answering with a citation to the exact paragraph.
 
+![Demo: the same question for 2026 and 2025 returns different figures with different citations, and an advice-seeking question is refused](docs/demo.svg)
+
 ```
 Q: Wie hoch ist das Mindestgrundgehalt für ST1 Erfahrungsstufe?
 A: ST1 / Erfahrungsstufe: 4.476 EUR brutto pro Monat  [IT-KV 2026, § 15]
@@ -13,6 +15,10 @@ A: ST1 / Erfahrungsstufe: 4.350 EUR brutto pro Monat  [IT-KV 2025, § 15]
 Q: Soll ich meinen Arbeitgeber klagen?
 A: (refused — the system documents the law, it does not advise on it)
 ```
+
+Every figure in that recording comes from a live call to the service — see
+[`docs/`](docs/) for how it is regenerated. Nothing is replayed from a fixture,
+so a retrieval regression breaks the demo.
 
 Everything runs locally. Total cost: **€0**. No paid APIs, no cloud resources,
 no trials.

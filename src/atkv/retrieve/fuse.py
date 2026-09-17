@@ -52,20 +52,40 @@ class Ranked:
 
 
 def rrf(dense_hits, lexical_hits, k: int = 10, *, rrf_k: int = RRF_K,
-        max_per_section: int | None = None) -> list[Ranked]:
+        max_per_section: int | None = None, extra_dense=None) -> list[Ranked]:
+    """Fuse ranked lists. `extra_dense` is a SECOND dense list, fused as a
+    third input rather than merged into the first.
+
+    It exists for the bilingual query. Merging the English and German dense
+    results by max score cost a question on the language-pair cases: the
+    German query's absolute similarity can exceed the English query's for a
+    chunk that is less relevant, and cosine scores from two different queries
+    are not comparable that way. Fusing by RANK avoids the comparison
+    entirely, which is the reason RRF is used here in the first place.
+
+    Measured, R@3 / R@5 / R@10:
+        dense(EN) + lexical              0.84 / 0.84 / 0.84
+        max-merged dense + lexical       0.84 / 0.84 / 0.88   language_pair 1.00 -> 0.83
+        dense(EN) + dense(DE) + lexical  0.88 / 0.88 / 0.92   language_pair stays 1.00
+    """
     by_id: dict[str, Ranked] = {}
 
-    def note(hits, which: str) -> None:
+    def note(hits, which: str | None) -> None:
         for rank, h in enumerate(hits, 1):
             r = by_id.get(h.chunk.chunk_id)
             if r is None:
                 r = Ranked(chunk=h.chunk, fused=0.0)
                 by_id[h.chunk.chunk_id] = r
             r.fused += 1.0 / (rrf_k + rank)
-            setattr(r, f"{which}_rank", rank)
-            setattr(r, f"{which}_score", h.score)
+            if which:
+                setattr(r, f"{which}_rank", rank)
+                setattr(r, f"{which}_score", h.score)
 
     note(dense_hits, "dense")
+    if extra_dense:
+        # Contributes to the fused score; the logged dense_rank stays the
+        # original-language one, so a trace still says where a chunk came from.
+        note(extra_dense, None)
     note(lexical_hits, "lexical")
 
     ordered = sorted(by_id.values(), key=lambda r: -r.fused)

@@ -103,13 +103,25 @@ class Bench:
             self.tr = QueryTranslator()
         self.lex = LexicalIndex(chunks, decompound_enabled=decompound)
 
-    def retrieve(self, q, *, filtered=True, lexical=True, dense=True, k=10):
+    def retrieve(self, q, *, filtered=True, lexical=True, dense=True, k=10,
+                 bilingual_dense=True):
+        """Mirrors RetrievalPipeline.search, so the numbers describe what ships.
+
+        bilingual_dense is switchable only so the eval can report the
+        before/after for it.
+        """
         as_of = date(q["valid_year"], 7, 1) if filtered else None
-        qv = self.emb.encode_query(q["question"])
-        d = self.dense.search(qv, k=POOL, as_of=as_of) if dense else []
-        lq = self.tr.expand(q["question"], q["lang"])
+        de = self.tr.translate(q["question"]) if q["lang"] != "de" else None
+
+        d, d_de = [], None
+        if dense:
+            d = self.dense.search(self.emb.encode_query(q["question"]), k=POOL, as_of=as_of)
+            if de and bilingual_dense:
+                d_de = self.dense.search(self.emb.encode_query(de), k=POOL, as_of=as_of)
+
+        lq = f"{q['question']} {de}" if de else q["question"]
         l = self.lex.search(lq, k=POOL, as_of=as_of) if lexical else []
-        return [r.chunk for r in cap_sections(rrf(d, l, k=POOL), k)]
+        return [r.chunk for r in cap_sections(rrf(d, l, k=POOL, extra_dense=d_de), k)]
 
 
 def recall(bench, questions, **kw) -> dict[int, float]:

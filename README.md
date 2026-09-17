@@ -86,9 +86,31 @@ extracted. The head must be a **noun**, detected for free from capitalisation
 
 | | R@1 | R@3 | R@5 | R@10 |
 |---|---|---|---|---|
-| dense only (e5-small) | **0.80** | 0.84 | 0.84 | 0.84 |
-| lexical only (BM25 + decompounding + query translation) | 0.76 | **0.88** | **0.88** | **0.92** |
-| hybrid (RRF) | 0.80 | 0.84 | 0.84 | 0.84 |
+| dense only (e5-small, bilingual query) | **0.84** | 0.88 | 0.88 | **0.96** |
+| lexical only (BM25 + decompounding + query translation) | 0.76 | 0.88 | 0.88 | 0.92 |
+| hybrid (three-way RRF) | 0.80 | **0.88** | **0.88** | 0.92 |
+| hybrid + cross-encoder rerank | 0.84 | 0.88 | **0.92** | **0.96** |
+
+**The dense query is issued in both languages.** A bi-encoder prefers
+same-language matches almost regardless of topical fit — the target of the
+annual-leave question sat at dense rank **87** for the English query and rank
+**1** for its German translation. Neither wins everywhere (a question the
+English KV genuinely answers got *worse* in German, rank 2 → 10), so both are
+searched and fused **by rank**. Merging them by score instead cost a question on
+the language pairs: cosine scores from two different queries are not
+comparable, which is why RRF is used here at all.
+
+| | R@3 | R@5 | R@10 | language_pair |
+|---|---|---|---|---|
+| dense(EN) + lexical | 0.84 | 0.84 | 0.84 | 1.00 |
+| max-merged dense + lexical | 0.84 | 0.84 | 0.88 | 0.83 |
+| **dense(EN) + dense(DE) + lexical** | **0.88** | **0.88** | **0.92** | **1.00** |
+
+Once the dense query is bilingual, **BM25 adds nothing measurable** — every
+category is identical with and without it, and the R@1/R@10 differences are one
+question each, on *different* questions. It is kept because it is a genuinely
+different signal and because the compound-splitting measurement depends on it,
+not because the numbers justify it.
 
 **Hybrid does not beat lexical alone here**, and that is an honest negative
 result rather than a tuning opportunity. RRF uses rank only; when one retriever
@@ -280,16 +302,19 @@ from the log without re-running anything.
 
 ## Known limitations
 
-- **Cross-lingual retrieval is the weakest area.** An English question about
-  UrlG § 2 still retrieves the English KV. Query translation raised the pool
-  ceiling from 0.96 to 1.00 and cross-lingual R@5 from 0.00 to 0.67; the
-  remainder is unsolved.
-- **Sibling paragraphs are not separable.** AZG §§ 3, 4, 4a, 4b all concern
-  *Normalarbeitszeit* and score within 0.007 of each other. BM25 makes it
-  worse, not better: the correct answer (§ 3) has the **lowest** term frequency,
-  because a defining provision states the rule once while the derogations
-  elaborate at length. Term-frequency ranking is systematically biased against
-  definitions.
+- **Sibling paragraphs are the remaining failure, in both languages.** The two
+  questions still missed at R@5 both want AZG § 3 and get §§ 4 / 4a — one asked
+  in German, one in English, so this is no longer a cross-lingual problem. Those
+  paragraphs all concern *Normalarbeitszeit* and score within 0.007 of each
+  other. BM25 makes it worse rather than better: the correct answer states the
+  rule once and tersely while the derogations elaborate, so § 3 has the **lowest**
+  term frequency of any candidate. Term-frequency ranking is systematically
+  biased against defining provisions.
+- **Cross-lingual is largely addressed, at two price points.** Bilingual dense
+  querying takes it from 0.00 to 0.33 for ~20 ms; the cross-encoder takes it to
+  0.67 for ~1400 ms. The two are redundant — with reranking on, the bilingual
+  query adds nothing, because both fix the same bi-encoder language bias. The
+  cheap one is on by default.
 - **Source stratification was tried and failed.** The hypothesis — that KV
   chunks crowded law chunks out of the pool — was wrong: the pool already
   contained the target for 24 of 25 questions. The problem is ranking within

@@ -90,20 +90,26 @@ class RetrievalPipeline:
         # so without this the correct chunk is not a weak candidate, it is not
         # a candidate. Measured: pool ceiling 0.96 -> 1.00.
         lex_query = question
+        de_query = None
         translated = False
         if self.translator is not None and lang != "de":
-            lex_query = self.translator.expand(question, lang)
-            translated = lex_query != question
+            de_query = self.translator.translate(question)
+            lex_query = f"{question} {de_query}"
+            translated = True
 
         pool_k = POOL if (rerank and self.reranker) else max(k, 10)
         d = self.dense.search(self.embedder.encode_query(question), k=pool_k,
                               as_of=as_of, tenant_id=tenant_id)
+        d_de = None
+        if de_query:
+            d_de = self.dense.search(self.embedder.encode_query(de_query), k=pool_k,
+                                     as_of=as_of, tenant_id=tenant_id)
         l = self.lexical.search(lex_query, k=pool_k, as_of=as_of, tenant_id=tenant_id)
 
         # NOTE: retrieval is deliberately NOT restricted to the question's
         # language. AZG and UrlG exist only in German, so a language filter
         # would make every English question about them unanswerable.
-        fused = rrf(d, l, k=pool_k)
+        fused = rrf(d, l, k=pool_k, extra_dense=d_de)
 
         if rerank and self.reranker:
             reranked = self.reranker.rerank(question, [r.chunk for r in fused], k=pool_k)
@@ -117,6 +123,10 @@ class RetrievalPipeline:
         final = cap_sections(ordered, k)
         return RetrievalResult(to_retrieved(final), bool(rerank and self.reranker),
                                translated, len(fused))
+
+    # NOTE: the English and German dense searches are fused by RANK in rrf(),
+    # not merged here by score. See rrf()'s docstring for why the score merge
+    # was wrong and what it cost.
 
     # -- persistence -------------------------------------------------------
 

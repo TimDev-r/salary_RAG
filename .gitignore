@@ -38,3 +38,9 @@ infra/*.tfvars
 # primary_shared_key. It is a build artefact, not source.
 infra/tfplan
 infra/*.tfplan
+
+# --- private planning docs -------------------------------------------------
+# The brief describes personal goals and a self-assessment written privately.
+# It was removed from history before this repo went public; keep it out.
+kv-rag-project-brief.md
+*-brief.md

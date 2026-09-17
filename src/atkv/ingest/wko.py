@@ -38,6 +38,8 @@ import httpx
 import pdfplumber
 import yaml
 
+from atkv.ingest.http import get_with_retry
+
 
 @dataclass(frozen=True)
 class CorpusDoc:
@@ -102,8 +104,7 @@ class WkoFetcher:
             self._verify(dest, doc)  # re-verify cached files: cheap, catches a poisoned cache
             return dest
 
-        r = self._http.get(doc.url)
-        r.raise_for_status()
+        r = get_with_retry(self._http, doc.url, label=doc.doc_id)
 
         # A bot-challenge or error page is HTML served with status 200.
         if not r.content.startswith(b"%PDF"):

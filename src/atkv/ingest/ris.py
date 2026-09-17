@@ -36,6 +36,7 @@ from pathlib import Path
 
 import httpx
 
+from atkv.ingest.http import get_with_retry
 from atkv.ingest.text import split_text
 from atkv.models import Chunk
 
@@ -191,8 +192,10 @@ class RisClient:
         units: list[dict] = []
         page = 1
         while True:
-            r = self._http.get(
+            r = get_with_retry(
+                self._http,
                 f"{BASE}/Bundesrecht",
+                label=f"{law.abbrev} search p{page}",
                 params={
                     "Applikation": "BrKons",
                     "Gesetzesnummer": law.gesetzesnummer,
@@ -201,7 +204,6 @@ class RisClient:
                     "Seitennummer": page,
                 },
             )
-            r.raise_for_status()
             result = r.json()["OgdSearchResult"]["OgdDocumentResults"]
             total = int(result["Hits"]["#text"])
 
@@ -257,8 +259,7 @@ class RisClient:
         if xml_url is None:
             raise RuntimeError(f"{doc_id}: no XML content URL in {[u['DataType'] for u in urls]}")
 
-        r = self._http.get(xml_url)
-        r.raise_for_status()
+        r = get_with_retry(self._http, xml_url, label=doc_id)
 
         # GUARD 3: 200-but-actually-a-404-page.
         if not r.content.lstrip().startswith(b"<?xml"):

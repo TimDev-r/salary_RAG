@@ -24,13 +24,13 @@
 
 FROM python:3.12-slim AS base
 
-# CPU-ONLY TORCH, DELIBERATELY.
-# The default Linux torch wheel bundles CUDA runtime libraries -- roughly 2.5 GB
-# of GPU code that can never execute in this container. The CPU index cuts the
-# image by more than half for identical behaviour.
-ENV UV_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu \
-    UV_INDEX_STRATEGY=unsafe-best-match \
-    UV_LINK_MODE=copy \
+# CPU-only torch is pinned in pyproject.toml via [tool.uv.sources], NOT here.
+# UV_EXTRA_INDEX_URL does not work for this: `uv sync --frozen` honours the
+# lockfile, and PyPI's torch declares its CUDA dependencies with the marker
+# platform_system == "Linux" without gating on architecture -- so this ARM
+# image pulled 3.3 GB of x86-only nvidia wheels anyway. Measured before the
+# fix: 7.81 GB total, 42% of it CUDA that can never execute here.
+ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -57,12 +57,18 @@ COPY manifests/ ./manifests/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-# ---- bake the model into the image ----------------------------------------
-# Without this the first request after a cold start pays the download.
+# ---- bake EVERY model the service loads at startup ------------------------
+# All of them, not just the embedder. A first version cached only e5-small, so
+# the container downloaded the translation model on startup instead: 49.7s to
+# become ready, and a hard dependency on reaching huggingface.co at boot. A
+# container that needs the network to start is not really self-contained.
 RUN uv run python -c "\
 from sentence_transformers import SentenceTransformer; \
+from transformers import MarianMTModel, MarianTokenizer; \
 SentenceTransformer('intfloat/multilingual-e5-small', device='cpu'); \
-print('embedding model cached')"
+MarianTokenizer.from_pretrained('Helsinki-NLP/opus-mt-en-de'); \
+MarianMTModel.from_pretrained('Helsinki-NLP/opus-mt-en-de'); \
+print('models cached')"
 
 # ---- bake the index into the image ----------------------------------------
 # Needs network: the WKO PDFs are fetched from manifests/sources.yaml rather

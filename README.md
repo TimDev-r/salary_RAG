@@ -213,6 +213,7 @@ other check and is indistinguishable from a correct one downstream.
 ## Running it
 
 ```bash
+make docker     # build the image (2.6 GB; fetches sources, bakes index + models)
 make ingest     # fetch sources, build the index (cached afterwards)
 make serve      # API on :8000, OpenAPI docs at /docs
 make test       # ground-truth, guard and generation tests
@@ -238,6 +239,30 @@ If the requested date falls outside the agreement's coverage, the response
 carries an explicit `notice` naming the window. Nothing out-of-window is ever
 substituted: serving the 2026 table in 2027 would be a wrong number with a real
 citation attached.
+
+### Container
+
+`make docker` produces a **2.6 GB** image that starts in **11.7 s** and needs no
+network at boot: the FAISS index and every model the service loads are baked in
+at build time. With `minReplicas: 0` in Stage 2, a cold start that downloaded
+model weights would charge that cost to a user rather than to a deploy.
+
+Two things that cost real time to find:
+
+- **`UV_EXTRA_INDEX_URL` does not give you CPU-only torch.** `uv sync --frozen`
+  honours the lockfile, and PyPI's torch declares its CUDA dependencies with the
+  marker `platform_system == "Linux"` — no architecture gate. This **ARM** image
+  therefore pulled 3.3 GB of x86-only nvidia wheels: 7.81 GB total, 42% of it
+  unusable. Pinning torch to `download.pytorch.org/whl/cpu` for Linux in
+  `[tool.uv.sources]` (which does publish `manylinux_2_28_aarch64` wheels) took
+  it to 2.6 GB.
+- **Bake every model, not just the obvious one.** Caching only the embedder left
+  the container downloading the translation model at boot — 49.7 s to ready and a
+  hard dependency on reaching huggingface.co. Now 11.7 s and fully offline.
+
+Ingest retries transient HTTP failures with backoff. A dropped connection from
+wko.at killed a 34-minute build once; 4xx other than 429 still fail immediately,
+since a 404 will not fix itself.
 
 ### Replayability
 

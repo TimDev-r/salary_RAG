@@ -37,3 +37,24 @@ packages = ["src/atkv"]
 
 [tool.pytest.ini_options]
 testpaths = ["evals", "tests"]
+
+# ---------------------------------------------------------------------------
+# torch from PyTorch's CPU index on Linux.
+#
+# PyPI's torch declares its CUDA dependencies with the marker
+#   platform_system == "Linux"
+# which is not gated on architecture. An ARM Linux container therefore pulls
+# ~3.3 GB of x86-only nvidia wheels it can never execute -- measured: a 7.81 GB
+# image of which 42% was dead CUDA.
+#
+# download.pytorch.org/whl/cpu publishes manylinux_2_28_aarch64 wheels without
+# those dependencies. The marker keeps macOS on PyPI, where torch has no CUDA
+# dependencies to begin with and where the MPS build is the one we want.
+# ---------------------------------------------------------------------------
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]

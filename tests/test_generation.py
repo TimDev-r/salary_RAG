@@ -82,3 +82,26 @@ def test_extractive_provider_cannot_invent(corpus_chunks):
     out = ExtractiveProvider().generate("egal", hits, "de")
     assert out.text.split("\n")[0].strip() in hits[0].text
     assert out.used_chunk_ids == [hits[0].chunk_id]
+
+
+def test_stream_yields_same_text_as_generate(corpus_chunks):
+    """Streaming must not be a second, divergent code path.
+
+    Both go through one _payload(), so a prompt fix cannot land in one and miss
+    the other -- which would show up as the streamed answer being subtly worse
+    than the one the eval suite measures.
+    """
+    p = _ollama()
+    hits = [c for c in corpus_chunks if "ST1 / Erfahrungsstufe" in c.text][:2]
+    q = "Wie hoch ist das Mindestgrundgehalt für ST1 Erfahrungsstufe?"
+    whole = p.generate(q, hits, "de").text
+    streamed = "".join(p.stream(q, hits, "de"))
+    assert "4.476" in streamed
+    assert streamed.strip() == whole.strip()
+
+
+def test_extractive_provider_streams_via_the_default(corpus_chunks):
+    """A provider that cannot stream still satisfies the interface."""
+    hits = [c for c in corpus_chunks if "ST1 / Erfahrungsstufe" in c.text][:1]
+    p = ExtractiveProvider()
+    assert "".join(p.stream("egal", hits, "de")) == p.generate("egal", hits, "de").text

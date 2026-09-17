@@ -25,6 +25,7 @@ not one -- which is the failure this whole project is built to avoid.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from atkv.models import Chunk
@@ -44,6 +45,19 @@ class GenerationProvider(ABC):
     @abstractmethod
     def generate(self, question: str, chunks: list[Chunk], lang: str) -> Generated:
         ...
+
+    def stream(self, question: str, chunks: list[Chunk], lang: str) -> Iterator[str]:
+        """Yield the answer in pieces as it is produced.
+
+        The default implementation yields the whole thing at once, so a
+        provider that cannot stream still satisfies the interface and the
+        endpoint does not need to know which kind it is talking to.
+
+        Streaming does not make generation faster -- the same tokens are
+        produced at the same rate. It changes WHEN the user sees the first
+        one: about a second, instead of a blank screen for nine.
+        """
+        yield self.generate(question, chunks, lang).text
 
     @abstractmethod
     def available(self) -> bool:

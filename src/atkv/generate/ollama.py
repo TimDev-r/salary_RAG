@@ -23,6 +23,9 @@ consecutive requests, which would make the eval suite non-reproducible.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
+
 import httpx
 
 from atkv.generate.base import Generated, GenerationProvider, build_context
@@ -125,24 +128,8 @@ class OllamaProvider(GenerationProvider):
             return False
 
     def generate(self, question: str, chunks: list[Chunk], lang: str) -> Generated:
-        context = build_context(chunks, lang=lang)
-        user = (
-            f"{'AUSZÜGE' if lang == 'de' else 'EXCERPTS'}:\n{context}\n\n"
-            f"{'FRAGE' if lang == 'de' else 'QUESTION'}: {question}"
-        )
-        r = self._http.post(
-            f"{self.host}/api/chat",
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM[lang]},
-                    {"role": "user", "content": user},
-                ],
-                "stream": False,
-                "keep_alive": self.keep_alive,
-                "options": {"temperature": 0, "num_predict": 160},
-            },
-        )
+        r = self._http.post(f"{self.host}/api/chat",
+                            json=self._payload(question, chunks, lang, stream=False))
         r.raise_for_status()
         text = r.json()["message"]["content"].strip()
         return Generated(
@@ -154,6 +141,41 @@ class OllamaProvider(GenerationProvider):
             provider=self.name,
             model=self.model,
         )
+
+    def _payload(self, question: str, chunks: list[Chunk], lang: str, stream: bool) -> dict:
+        context = build_context(chunks, lang=lang)
+        user = (
+            f"{'AUSZÜGE' if lang == 'de' else 'EXCERPTS'}:\n{context}\n\n"
+            f"{'FRAGE' if lang == 'de' else 'QUESTION'}: {question}"
+        )
+        return {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": SYSTEM[lang]},
+                {"role": "user", "content": user},
+            ],
+            "stream": stream,
+            "keep_alive": self.keep_alive,
+            "options": {"temperature": 0, "num_predict": 160},
+        }
+
+    def stream(self, question: str, chunks: list[Chunk], lang: str) -> Iterator[str]:
+        """Yield tokens as Ollama emits them (newline-delimited JSON)."""
+        with self._http.stream("POST", f"{self.host}/api/chat",
+                               json=self._payload(question, chunks, lang, stream=True)) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                piece = obj.get("message", {}).get("content", "")
+                if piece:
+                    yield piece
+                if obj.get("done"):
+                    break
 
     def close(self) -> None:
         self._http.close()

@@ -18,6 +18,7 @@ invention.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -26,6 +27,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 
 from atkv import guard, logging as jlog
 from atkv.generate.base import GenerationProvider
@@ -178,4 +180,98 @@ def query(req: QueryRequest) -> QueryResponse:
         citations=[c.to_citation() for c in chunks],
         trace_id=trace_id,
         refused=False,
+    )
+
+
+@app.post("/query/stream")
+def query_stream(req: QueryRequest) -> StreamingResponse:
+    """Server-sent events: citations first, then the answer token by token.
+
+    CITATIONS ARE SENT BEFORE THE ANSWER, deliberately. They are known the
+    moment retrieval finishes, seconds before the first generated token, so
+    the reader can see WHICH paragraphs are being answered from while the
+    answer is still being written. On a system whose whole claim is provenance,
+    the sources should not be the last thing to arrive.
+
+    Event types:
+        refusal   the guard stopped it; no retrieval happened
+        meta      trace_id and citations, emitted as soon as retrieval is done
+        token     one piece of the answer
+        done      final latency, and the provider that served it
+        error     generation failed mid-stream (see below)
+
+    Note on errors: once a 200 and the first byte have gone out, HTTP offers no
+    way to retract them. A failure halfway through cannot become a 500, so it
+    is sent as an `error` event and the client must handle it. A stream that
+    simply stops looks identical to a short answer.
+    """
+    trace_id = uuid.uuid4().hex[:12]
+    t0 = time.perf_counter()
+
+    def sse(event: str, data: dict) -> str:
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+    def events():
+        verdict = guard.check(req.question)
+        if verdict.refuse:
+            jlog.log(log, logging.INFO, "refused", trace_id=trace_id,
+                     rule=verdict.rule, reason=verdict.reason, lang=req.lang, stream=True)
+            yield sse("refusal", {"trace_id": trace_id, "answer": verdict.message(req.lang),
+                                  "reason": verdict.reason})
+            return
+
+        p: RetrievalPipeline = STATE.get("pipeline")
+        if p is None:
+            yield sse("error", {"trace_id": trace_id, "error": "index not ready"})
+            return
+
+        result = p.search(req.question, as_of=req.as_of(), k=req.k, lang=req.lang,
+                          tenant_id=req.tenant_id, rerank=req.rerank)
+        chunks = [r.chunk for r in result.chunks]
+        retrieval_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+        yield sse("meta", {
+            "trace_id": trace_id,
+            "retrieval_ms": retrieval_ms,
+            "citations": [c.to_citation().model_dump() for c in chunks],
+        })
+
+        provider = _provider()
+        pieces: list[str] = []
+        try:
+            for piece in provider.stream(req.question, chunks, req.lang):
+                pieces.append(piece)
+                yield sse("token", {"text": piece})
+        except Exception as e:
+            jlog.log(log, logging.ERROR, "stream failed", trace_id=trace_id, error=str(e))
+            yield sse("error", {"trace_id": trace_id, "error": str(e)})
+            return
+
+        total_ms = round((time.perf_counter() - t0) * 1000, 1)
+        jlog.log(
+            log, logging.INFO, "query", trace_id=trace_id, stream=True,
+            question=req.question, lang=req.lang, valid_year=req.valid_year,
+            as_of=str(req.as_of()), tenant_id=req.tenant_id,
+            rerank=result.used_rerank, translated=result.used_translation,
+            pool_size=result.pool_size, provider=provider.name,
+            retrieved=[
+                {"chunk_id": r.chunk.chunk_id, "doc_id": r.chunk.doc_id,
+                 "section_ref": r.chunk.section_ref, "lang": r.chunk.lang,
+                 "dense": r.dense_score, "lexical": r.lexical_score, "fused": r.fused_score}
+                for r in result.chunks
+            ],
+            retrieval_ms=retrieval_ms, latency_ms=total_ms,
+            answer_chars=len("".join(pieces)),
+        )
+        yield sse("done", {"trace_id": trace_id, "latency_ms": total_ms,
+                           "provider": provider.name})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        # Without this a reverse proxy will happily buffer the whole response
+        # and deliver it in one lump, which is exactly what streaming exists to
+        # avoid -- and it fails silently, looking like a slow server.
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                 "Connection": "keep-alive"},
     )

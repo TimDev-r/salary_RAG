@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AT-KV Assistant — demo · Timur Ibragimov</title>
+<meta name="description" content="Retrieval over the Austrian IT collective agreement, answered with a citation to the exact paragraph.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<!--
+  Recorded replay, not a live client. Every answer, citation, page number and
+  latency below was captured verbatim from a real session against the running
+  service.
+
+  It replays rather than calling the API because the deployed service runs at
+  minReplicas 0 -- nothing exists between requests, so the first visitor after
+  idle waits for a 2.6 GB image pull. On a portfolio link that reads as broken
+  rather than as cost-efficient.
+
+  Design tokens copied from assets/style.css so this page is native to the site
+  rather than transplanted into it.
+-->
+<style>
+  :root{
+    --bg:#0a0c0f; --bg-2:#0e1116; --surface:#12161c; --surface-2:#171c23;
+    --line:#222a34; --line-soft:#1a212a;
+    --text:#e7edf4; --text-2:#a6b2c0; --text-3:#6f7d8c;
+    --accent:#5ee6c0; --accent-dk:#2fbf9c; --accent-gl:rgba(94,230,192,.10);
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+    --wrap:1080px; --r:14px; --ease:cubic-bezier(.22,.61,.36,1);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 var(--sans);
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--wrap);margin:0 auto;padding:0 26px}
+  header{padding:54px 0 0}
+  .back{display:inline-flex;align-items:center;gap:7px;color:var(--text-3);
+        text-decoration:none;font-size:13.5px;font-family:var(--mono)}
+  .back:hover{color:var(--accent)}
+  h1{font-size:clamp(26px,4vw,38px);line-height:1.15;letter-spacing:-.02em;margin:22px 0 10px}
+  .lede{color:var(--text-2);max-width:62ch;margin:0 0 6px}
+  .kicker{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:18px 0 0;
+          font-family:var(--mono);font-size:12.5px}
+  .tag{background:var(--accent-gl);color:var(--accent);border:1px solid rgba(94,230,192,.25);
+       border-radius:999px;padding:3px 10px}
+  .kicker a{color:var(--text-2);text-decoration:none;border-bottom:1px solid var(--line)}
+  .kicker a:hover{color:var(--accent);border-color:var(--accent)}
+
+  .problem{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+           padding:20px 22px;margin:30px 0 26px}
+  .problem p{margin:0;color:var(--text-2)}
+  .problem strong{color:var(--text)}
+  .problem code{font-family:var(--mono);font-size:13px;background:var(--surface-2);
+                border:1px solid var(--line-soft);border-radius:6px;padding:1px 6px;color:var(--accent)}
+
+  .chatcard{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .chatbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+           padding:12px 18px;border-bottom:1px solid var(--line-soft);background:var(--surface)}
+  .chatbar .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+                box-shadow:0 0 0 4px var(--accent-gl)}
+  .chatbar b{font-size:13.5px;font-weight:600}
+  .chatbar span{color:var(--text-3);font-size:12.5px;font-family:var(--mono)}
+  .chatbar button{margin-left:auto;background:var(--surface-2);color:var(--text-2);
+                  border:1px solid var(--line);border-radius:999px;padding:5px 12px;
+                  font:inherit;font-size:12.5px;cursor:pointer;font-family:var(--mono)}
+  .chatbar button:hover:not(:disabled){color:var(--accent);border-color:var(--accent-dk)}
+  .chatbar button:disabled{opacity:.45;cursor:default}
+
+  .msgs{display:flex;flex-direction:column;gap:16px;padding:22px 18px;min-height:380px}
+  .row{display:flex;animation:in .3s var(--ease) both}
+  @keyframes in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .row.me{justify-content:flex-end}
+  .bubble{max-width:min(90%,620px);padding:12px 15px;border-radius:15px;
+          border:1px solid var(--line);background:var(--surface);white-space:pre-wrap;word-wrap:break-word}
+  .row.me .bubble{background:var(--surface-2);border-bottom-right-radius:5px;color:var(--text)}
+  .row.bot .bubble{border-bottom-left-radius:5px}
+  .bubble.refused{border-left:3px solid var(--accent-dk)}
+  .cites{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+  .cite{font-family:var(--mono);font-size:11.5px;background:var(--accent-gl);color:var(--accent);
+        border:1px solid rgba(94,230,192,.22);border-radius:999px;padding:3px 10px;
+        animation:in .25s var(--ease) both}
+  .meta{font-family:var(--mono);font-size:11px;color:var(--text-3);margin-top:9px}
+  .dots span{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--text-3);
+             margin-right:4px;animation:b 1.2s infinite}
+  .dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+  @keyframes b{0%,60%,100%{opacity:.2}30%{opacity:1}}
+
+  .takeaway{margin:26px 0 0;padding:18px 22px;border-left:2px solid var(--accent-dk);
+            background:var(--surface);border-radius:0 var(--r) var(--r) 0;color:var(--text-2)}
+  .takeaway b{color:var(--text)}
+  .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:26px 0 0}
+  .fact{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+  .fact dt{font-family:var(--mono);font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
+  .fact dd{margin:5px 0 0;font-size:19px;font-weight:600;letter-spacing:-.01em}
+  .fact dd small{display:block;font-size:12px;font-weight:400;color:var(--text-3);letter-spacing:0}
+  footer{color:var(--text-3);font-size:13px;padding:40px 0 60px;margin-top:34px;
+         border-top:1px solid var(--line-soft)}
+  footer a{color:var(--text-2)}
+  @media (max-width:620px){ .msgs{padding:16px 13px} header{padding-top:32px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="back" href="./">← Timur Ibragimov</a>
+    <h1>Which year&rsquo;s salary table is this?</h1>
+    <p class="lede">
+      Retrieval over the Austrian IT collective agreement and related labour law,
+      answering with a citation to the exact paragraph and page.
+    </p>
+    <p class="kicker">
+      <span class="tag">version-scoped RAG</span>
+      <a href="https://github.com/TimDev-r/salary_RAG">salary_RAG</a>
+      <a href="https://github.com/TimDev-r/salary_RAG#measured-results">measured results</a>
+    </p>
+  </header>
+
+  <div class="problem">
+    <p>
+      <strong>The problem:</strong> the 2025 and 2026 agreements are about
+      <strong>95% identical text</strong>, on the same page, in the same layout. Only the
+      numbers move. Ask an embedding model for &ldquo;the ST1 minimum salary&rdquo; and it
+      returns the wrong year <em>confidently</em>, because the two paragraphs are
+      near-indistinguishable by meaning. The fix is not a better model — it is a hard
+      filter on <code>valid_from</code> applied <strong>before</strong> ranking, which is the
+      same mechanism enterprise search needs for access control.
+    </p>
+  </div>
+
+  <div class="chatcard">
+    <div class="chatbar">
+      <span class="dot"></span>
+      <b>AT-KV Assistant</b>
+      <span>recorded replay · real answers, citations and latencies</span>
+      <button id="again">↻ replay</button>
+    </div>
+    <div class="msgs" id="msgs"></div>
+  </div>
+
+  <div class="takeaway">
+    <b>Watch the second question.</b> It is the same sentence as the first — only the
+    year in force changed. The figure, the source document and the page all change with
+    it, and the citation is checkable against the published PDF. The third question asks
+    for advice and is refused: the system documents the law, it does not advise on it.
+  </div>
+
+  <dl class="facts">
+    <div class="fact"><dt>version filter</dt><dd>+0.16<small>retrieval@1, 0.64 → 0.80</small></dd></div>
+    <div class="fact"><dt>retrieval@5</dt><dd>0.92<small>25 frozen questions</small></dd></div>
+    <div class="fact"><dt>refusals</dt><dd>5/5<small>0 false positives on 25</small></dd></div>
+    <div class="fact"><dt>running cost</dt><dd>&euro;0<small>local models, scale-to-zero</small></dd></div>
+  </dl>
+
+  <footer>
+    Python · FastAPI · pdfplumber · multilingual-e5 · FAISS · BM25 with German
+    compound splitting · Ollama · Docker · Terraform on Azure Container Apps.
+    Sources: <a href="https://data.bka.gv.at/ris/api/v2.6">RIS</a> open government data
+    and <a href="https://www.wko.at/">WKO</a>, fetched at ingest and never committed.
+  </footer>
+</div>
+
+<script>
+// Captured verbatim from a live session against the running service.
+const TRANSCRIPT = [
+  {who:"me", text:"Wie hoch ist das Mindestgrundgehalt für ST1 Erfahrungsstufe?"},
+  {who:"bot", think:900, cites:["IT-KV 2026 · § 15 · p26"],
+   meta:"in force 2026-07-01 · retrieval 803 ms · total 7.6 s",
+   text:"Die Mindestgrundgehälter betragen ab 1.1.2026:\nST1 / Erfahrungsstufe: 4.476 EUR brutto pro Monat [IT-KV 2026, § 15]."},
+  {who:"me", text:"Wie hoch ist das Mindestgrundgehalt für ST1 Erfahrungsstufe?"},
+  {who:"bot", think:700, cites:["IT-KV 2025 · § 15 · p26","IT-KV 2025 · § 15 · p21"],
+   meta:"in force 2025-07-01 · retrieval 556 ms · total 12.0 s",
+   text:"Die Mindestgrundgehälter betragen ab 1.1.2025:\nST1 / Erfahrungsstufe: 4.350 EUR brutto pro Monat [IT-KV 2025, § 15]."},
+  {who:"me", text:"Soll ich meinen Arbeitgeber klagen?"},
+  {who:"bot", think:250, refused:true,
+   text:"Diese Frage betrifft eine persönliche Empfehlung oder Rechtsberatung. Dieses System gibt ausschließlich den Inhalt des Kollektivvertrags und der zitierten Gesetze wieder und beantwortet keine Fragen dazu, was Sie tun sollten. Für eine Einschätzung Ihres konkreten Falls wenden Sie sich bitte an die Arbeiterkammer, Ihre Gewerkschaft oder eine Rechtsanwältin bzw. einen Rechtsanwalt."}
+];
+
+const msgs = document.getElementById('msgs'), again = document.getElementById('again');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function bubble(cls){
+  const row = document.createElement('div'); row.className = 'row ' + cls;
+  const b = document.createElement('div'); b.className = 'bubble';
+  row.appendChild(b); msgs.appendChild(row); return b;
+}
+async function typeInto(el, text, per){
+  if(reduce){ el.textContent = text; return; }
+  for(let i = 0; i < text.length; i++){
+    el.textContent = text.slice(0, i + 1);
+    if(i % 2 === 0) await sleep(per);
+  }
+}
+async function play(){
+  msgs.innerHTML = ''; again.disabled = true;
+  for(const t of TRANSCRIPT){
+    if(t.who === 'me'){
+      await typeInto(bubble('me'), t.text, 13); await sleep(reduce ? 120 : 430); continue;
+    }
+    const b = bubble('bot');
+    b.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
+    await sleep(reduce ? 120 : (t.think || 600));
+    if(t.refused){
+      b.className = 'bubble refused'; b.textContent = '';
+      await typeInto(b, t.text, 4); await sleep(700); continue;
+    }
+    // Citations first: known the moment retrieval finishes, seconds before the
+    // first generated token. That ordering is the point of the streaming API.
+    b.innerHTML = '';
+    const ans = document.createElement('div'); b.appendChild(ans);
+    const cites = document.createElement('div'); cites.className = 'cites'; b.appendChild(cites);
+    for(const c of t.cites || []){
+      const el = document.createElement('span'); el.className = 'cite'; el.textContent = c;
+      cites.appendChild(el); await sleep(reduce ? 40 : 230);
+    }
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = t.meta; b.appendChild(meta);
+    await sleep(reduce ? 80 : 380);
+    await typeInto(ans, t.text, 10);
+    await sleep(reduce ? 200 : 1050);
+  }
+  again.disabled = false;
+}
+again.onclick = play;
+// Only start once the card is on screen, so the animation is not already over
+// by the time someone scrolls to it.
+const card = document.querySelector('.chatcard');
+if('IntersectionObserver' in window){
+  const io = new IntersectionObserver(es => {
+    if(es.some(e => e.isIntersecting)){ io.disconnect(); play(); }
+  }, {threshold:.25});
+  io.observe(card);
+} else { play(); }
+</script>
+</body>
+</html>

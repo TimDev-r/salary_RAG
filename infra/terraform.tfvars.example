@@ -1,3 +1,10 @@
-# Copy to terraform.tfvars (gitignored) and fill in.
+# Copy to terraform.tfvars (gitignored) and fill in your own values.
+#
+#   az account show --query id -o tsv
+#
+# Note: a new Azure for Students subscription is restricted to a subset of
+# regions. westeurope, northeurope, francecentral, uksouth and eastus all
+# returned 403 "not accepting new customers"; germanywestcentral and
+# swedencentral worked. Probe before assuming.
 subscription_id = "00000000-0000-0000-0000-000000000000"
 location        = "germanywestcentral"

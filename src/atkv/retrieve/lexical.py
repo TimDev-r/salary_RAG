@@ -68,7 +68,11 @@ class LexicalHit:
 
 
 class GermanAnalyzer:
-    def __init__(self, corpus_texts: list[str]) -> None:
+    def __init__(self, corpus_texts: list[str], decompound_enabled: bool = True) -> None:
+        # Switchable so the eval can report the before/after the brief asks
+        # for. With it off this is plain stemmed BM25, which is the baseline
+        # the German handling has to beat.
+        self.decompound_enabled = decompound_enabled
         self._stem_de = snowballstemmer.stemmer("german").stemWord
         self._stem_en = snowballstemmer.stemmer("english").stemWord
         # Vocabulary of plausible compound PARTS, drawn from the corpus itself.
@@ -99,6 +103,8 @@ class GermanAnalyzer:
     @lru_cache(maxsize=50_000)
     def decompound(self, word: str) -> tuple[str, ...]:
         """'normalarbeitszeit' -> ('normal', 'arbeitszeit'). () if not splittable."""
+        if not self.decompound_enabled:
+            return ()
         if len(word) < MIN_COMPOUND or not word.isalpha():
             return ()
 
@@ -163,9 +169,9 @@ class GermanAnalyzer:
 
 
 class LexicalIndex:
-    def __init__(self, chunks: list[Chunk]) -> None:
+    def __init__(self, chunks: list[Chunk], decompound_enabled: bool = True) -> None:
         self.chunks = chunks
-        self.analyzer = GermanAnalyzer([c.text for c in chunks])
+        self.analyzer = GermanAnalyzer([c.text for c in chunks], decompound_enabled)
         # Analyse each chunk in ITS OWN language, so German chunks get German
         # stemming and English chunks get English. Using one stemmer for both
         # mangles the other language's morphology.

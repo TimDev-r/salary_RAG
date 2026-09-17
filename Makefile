@@ -5,7 +5,7 @@
 export OMP_NUM_THREADS = 1
 UV = uv run
 
-.PHONY: help ingest serve eval eval-retrieval eval-ablation test fmt clean
+.PHONY: help ingest serve eval eval-fast eval-retrieval eval-ablation test docker docker-run clean
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -22,7 +22,11 @@ serve:  ## Run the API on :8000 (docs at /docs)
 test:  ## Ground-truth, guard and generation tests
 	$(UV) pytest evals/ tests/ -q
 
-eval: test eval-retrieval  ## Everything the README reports
+eval:  ## The full suite: retrieval@k, answer/citation accuracy, refusals
+	$(UV) python scripts/eval_suite.py
+
+eval-fast:  ## Same, skipping generation (no model server needed)
+	$(UV) python scripts/eval_suite.py --no-generation
 
 eval-retrieval:  ## Dense vs lexical vs hybrid vs reranked
 	$(UV) python scripts/eval_retrieval.py
@@ -32,3 +36,9 @@ eval-ablation:  ## Stratified pooling and query translation
 
 clean:  ## Remove the built index (keeps downloaded sources)
 	rm -rf data/index
+
+docker:  ## Build the image (fetches sources and bakes the index at build time)
+	docker build -t atkv:local .
+
+docker-run:  ## Run the built image on :8000
+	docker run --rm -p 8000:8000 atkv:local

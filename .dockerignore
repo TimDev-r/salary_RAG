@@ -1,0 +1,13 @@
+# The index is built inside the image, not copied from the host -- a host
+# index could have been built from a different corpus or model.
+data/
+.venv/
+.git/
+.pytest_cache/
+__pycache__/
+**/__pycache__/
+*.egg-info/
+scripts/
+evals/
+tests/
+kv-rag-project-brief.md

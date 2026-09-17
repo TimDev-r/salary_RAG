@@ -1,0 +1,181 @@
+# Build, gate on the eval suite, publish, deploy.
+#
+# NO AZURE CREDENTIAL IS STORED ANYWHERE. Authentication is OpenID Connect:
+# GitHub mints a short-lived token per run, Azure verifies it came from this
+# repository on this branch, and issues access valid for minutes. The
+# conventional alternative -- a service principal password in a GitHub secret
+# -- is long-lived, visible to anyone who can edit a workflow, and grants
+# access until somebody notices it leaked. `gh secret list` on this repo is
+# empty, and that is the design rather than an oversight.
+#
+# The identity is scoped to the resource group, not the subscription, so the
+# worst a compromised run can do is break the app it deploys.
+#
+# THE EVAL SUITE GATES THE DEPLOY. `deploy` needs `publish` needs `test`, so a
+# retrieval regression stops the pipeline before an image is built, never mind
+# deployed. That ordering is the point of the brief's requirement.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege. id-token is what OIDC needs; packages is what pushing to
+# ghcr.io needs. Nothing else.
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+concurrency:
+  # A newer push supersedes an in-flight deploy rather than racing it.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/atkv
+  RESOURCE_GROUP: rg-atkv
+  CONTAINER_APP: ca-atkv
+  OMP_NUM_THREADS: "1"   # faiss and torch each bundle OpenMP; see atkv/__init__.py
+
+jobs:
+  test:
+    name: eval gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv sync --frozen --no-dev --group dev
+
+      # The corpus is fetched, never committed: the WKO PDFs are the social
+      # partners' copyrighted documents. Cached by manifest hash so a normal
+      # run does not re-download them, and so WKO is not hit on every push.
+      - name: Cache fetched sources
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: sources-${{ hashFiles('manifests/sources.yaml', 'src/atkv/ingest/**') }}
+
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-e5-small-v1
+
+      # Fails the build if a source document has changed underneath us: every
+      # download is checked for an expected string on page 1, because a
+      # wrong-year agreement passes every other check and is indistinguishable
+      # from a correct one downstream.
+      - name: Fetch sources and build the index
+        run: uv run python -c "from pathlib import Path; from atkv.ingest.build import build_corpus; print(len(build_corpus(Path('.'))), 'chunks')"
+
+      - name: Ground truth, guard and coverage tests
+        run: uv run pytest evals/ tests/ -q
+
+      # Generation tests skip without a model server; retrieval, citation and
+      # refusal accuracy are measured against the extractive provider, which
+      # cannot hallucinate because it cannot write.
+      - name: Evaluation suite
+        run: uv run python scripts/eval_suite.py --no-generation
+
+  publish:
+    name: build and push image
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # issued per-run by GitHub, not stored by us
+
+      - id: meta
+        run: echo "image=${IMAGE}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      # The build fetches the sources again inside the image and runs the same
+      # page-1 assertion, so a build fails rather than producing an image that
+      # serves the wrong year's figures.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  deploy:
+    name: deploy to Azure
+    needs: publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ steps.url.outputs.url }}
+    steps:
+      # No password. GitHub proves who it is; Azure checks the claim against
+      # the federated credential, which is pinned to this repo and this branch.
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Only the image tag changes. Terraform owns everything else and marks
+      # this field ignore_changes, so the two never fight over it.
+      - name: Update the container app image
+        run: |
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "${{ needs.publish.outputs.image }}" \
+            --output none
+
+      - id: url
+        run: |
+          FQDN=$(az containerapp show -n "$CONTAINER_APP" -g "$RESOURCE_GROUP" \
+                  --query properties.configuration.ingress.fqdn -o tsv)
+          echo "url=https://$FQDN" >> "$GITHUB_OUTPUT"
+          echo "Deployed: https://$FQDN" >> "$GITHUB_STEP_SUMMARY"
+
+      # A deploy that reports success without the service answering is worse
+      # than a failed one. minReplicas is 0, so the first request wakes the app
+      # and pays a cold start; retry rather than assume.
+      - name: Verify the deployment serves
+        run: |
+          URL="${{ steps.url.outputs.url }}/healthz"
+          for i in $(seq 1 30); do
+            body=$(curl -sS --max-time 30 "$URL" || true)
+            if echo "$body" | grep -q '"status"'; then
+              echo "$body"
+              echo "$body" | grep -q '"chunks": *[1-9]' && exit 0
+            fi
+            echo "attempt $i: not ready yet"; sleep 10
+          done
+          echo "::error::the app did not serve /healthz after 5 minutes"
+          exit 1

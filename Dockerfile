@@ -92,6 +92,13 @@ EXPOSE 8000
 # Reports degraded when a source type cannot cover today, so a stale index is
 # visible to the orchestrator rather than only to a puzzled user.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz',timeout=5).status==200 else 1)"
+  CMD /app/.venv/bin/python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz',timeout=5).status==200 else 1)"
 
-CMD ["uv", "run", "uvicorn", "atkv.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the venv's uvicorn DIRECTLY, not via `uv run`.
+#
+# `uv run` re-resolves the environment and rebuilds the local package on every
+# container start -- the logs showed "Building atkv @ file:///app" and
+# "Bytecode compiled 11856 files in 5.08s" on each cold start. That is work
+# already done at build time, repeated while a health probe is counting down,
+# on half a vCPU.
+CMD ["/app/.venv/bin/uvicorn", "atkv.api:app", "--host", "0.0.0.0", "--port", "8000"]

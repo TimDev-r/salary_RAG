@@ -91,8 +91,19 @@ resource "azurerm_container_app" "app" {
     container {
       name   = "atkv"
       image  = var.image
-      cpu    = 0.5
-      memory = "1Gi"
+      # 1 vCPU / 2 GiB, not 0.5 / 1 GiB.
+      #
+      # The app peaks around 0.7 GiB loading the embedder, the translation
+      # model and the index, which left too little headroom under a 1 GiB cap
+      # and the container was killed with no traceback. Half a vCPU also made
+      # startup slow enough to lose a race with the health probes.
+      #
+      # This does NOT change the idle cost, which is what matters: at
+      # min_replicas 0 nothing exists between requests. It doubles consumption
+      # per second of actual runtime, against a monthly free grant of 180,000
+      # vCPU-seconds -- about 50 hours of real request handling.
+      cpu    = 1.0
+      memory = "2Gi"
 
       env {
         name  = "OMP_NUM_THREADS"
@@ -103,25 +114,37 @@ resource "azurerm_container_app" "app" {
         value = "0" # the cross-encoder costs ~1400ms and no longer improves R@5
       }
 
-      # Container Apps restarts an unhealthy replica. The index and both models
-      # are baked into the image, so readiness is bounded by process start
-      # rather than by a download -- about 12s locally.
+      # A STARTUP PROBE is the right tool for a slow cold start, rather than a
+      # long liveness initial_delay (which Azure caps at 60s anyway). While it
+      # is failing, liveness is not evaluated at all -- so a 2.6 GB image pull
+      # plus two model loads cannot be mistaken for a hung process and killed.
+      # 20 x 15s gives five minutes before the platform gives up.
+      startup_probe {
+        transport               = "HTTP"
+        port                    = 8000
+        path                    = "/healthz"
+        interval_seconds        = 15
+        failure_count_threshold = 20
+      }
+
       readiness_probe {
         transport               = "HTTP"
         port                    = 8000
         path                    = "/healthz"
-        initial_delay           = 10
-        interval_seconds        = 10
-        failure_count_threshold = 6
+        # Generous: a cold start pulls a 2.6 GB image and loads two models.
+        # Probes that fire too early turn a slow start into a crash loop.
+        initial_delay           = 20
+        interval_seconds        = 15
+        failure_count_threshold = 12
       }
 
       liveness_probe {
         transport               = "HTTP"
         port                    = 8000
         path                    = "/healthz"
-        initial_delay           = 30
+        initial_delay           = 60
         interval_seconds        = 30
-        failure_count_threshold = 3
+        failure_count_threshold = 5
       }
     }
   }

@@ -368,6 +368,32 @@ from the log without re-running anything.
   verbalises each table cell into a sentence that is already an answer. It
   earns its place on rank-1 misses and on prose that needs rephrasing, not on
   table lookups.
+- **The image is 2.6 GB, and shrinking it was measured then parked.** At
+  `minReplicas: 0` every cold start pulls it. The weight is `torch` (652 MB)
+  plus the chain `sentence-transformers` drags in — `transformers` 115 MB,
+  `scipy` 149 MB, `sympy` 74 MB, `sklearn` 57 MB — and a 1.04 GB model cache.
+  Exporting `multilingual-e5-small` to ONNX and running it on `onnxruntime` +
+  `tokenizers` removes all of it:
+
+  | | weights | retrieval |
+  |---|---|---|
+  | torch (current) | 448 MB + 652 MB runtime | 0.80 / 0.92 / 0.92 / 0.96 |
+  | ONNX fp32 | 448 MB | **identical**, same two misses (cosine 1.00000) |
+  | ONNX int8 | 113 MB | unmeasured — see below |
+
+  fp32 would take the image to roughly 1.5 GB at **zero** quality cost. It is
+  parked rather than done because the translation model is encoder-decoder
+  with a generation loop, far harder to run on raw `onnxruntime` than a
+  single-pass encoder — and without it cross-lingual retrieval drops from 0.67
+  to 0.00. Half the migration saves nothing.
+
+  int8 was abandoned deliberately. It would save a further 335 MB, but the
+  quantisation was configured for `avx512_vnni` — an x86 instruction set — so
+  on an ARM development machine onnxruntime fell back to emulation and the
+  measurement ran 35x slower than torch. More importantly, the hardest cases
+  in this corpus sit within 0.007 cosine of each other, so 0.995 fidelity is a
+  real risk rather than a rounding error. Unmeasured is unmeasured.
+
 - **Generation is slow, and the latency figures are host-dependent.** The
   numbers above were measured at ~10.8 tok/s with 87 tok/s prompt evaluation,
   on a machine carrying ~15 GB of swap against 8 GB of RAM. After closing a

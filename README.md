@@ -25,8 +25,19 @@ so a retrieval regression breaks it; the chat replay is a verbatim transcript of
 a real session, replayed rather than live because the deployed service scales to
 zero and a first visitor would otherwise wait ~60 s for a cold start.
 
-Everything runs locally. Total cost: **€0**. No paid APIs, no cloud resources,
-no trials.
+## Cost
+
+Stage 1 runs entirely on your own machine: **€0**, no paid APIs, no trials.
+
+Stage 2 deploys to Azure Container Apps with `minReplicas: 0`, so the service
+costs nothing while idle. Measured consumption to date is **€0.038** — 1,476
+vCPU-seconds and 2,952 GiB-seconds, which is the CI deploys, the cold starts
+(~60 s each to load the embedding and reranker models) and the scale-to-zero
+cooldown that follows each request. Log ingestion rounds to 0.00 GB.
+
+That €0.038 is drawn from an Azure for Students credit. The subscription has no
+payment method attached and its spending limit is on, so it cannot charge money:
+when the credit runs out the resources are disabled instead.
 
 ---
 

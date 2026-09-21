@@ -32,7 +32,7 @@ Stage 1 runs entirely on your own machine: **€0**, no paid APIs, no trials.
 Stage 2 deploys to Azure Container Apps with `minReplicas: 0`, so the service
 costs nothing while idle. Measured consumption to date is **€0.038** — 1,476
 vCPU-seconds and 2,952 GiB-seconds, which is the CI deploys, the cold starts
-(~60 s each to load the embedding and reranker models) and the scale-to-zero
+(~60 s each to load the embedding and translation models and the index) and the scale-to-zero
 cooldown that follows each request. Log ingestion rounds to 0.00 GB.
 
 That €0.038 is drawn from an Azure for Students credit. The subscription has no
